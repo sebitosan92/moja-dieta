@@ -1,6 +1,8 @@
 package com.example.mojadieta.domain.repository
 
+import com.example.mojadieta.domain.model.FoodProduct
 import com.example.mojadieta.domain.model.MealEntry
+import com.example.mojadieta.domain.model.RecipeIngredient
 import com.example.mojadieta.domain.model.MealType
 import com.example.mojadieta.domain.model.Note
 import com.example.mojadieta.domain.model.PlannedMeal
@@ -16,6 +18,18 @@ interface RecipeRepository {
     /** Zapisuje przepis (nowy lub istniejący) i zwraca jego identyfikator. */
     suspend fun saveRecipe(recipe: Recipe): Long
     suspend fun deleteRecipe(id: Long)
+
+    fun observeIngredients(recipeId: Long): Flow<List<RecipeIngredient>>
+    suspend fun getIngredients(recipeId: Long): List<RecipeIngredient>
+    /** Zapisuje przepis razem ze składnikami (w jednej transakcji) i zwraca id przepisu. */
+    suspend fun saveRecipeWithIngredients(recipe: Recipe, ingredients: List<RecipeIngredient>): Long
+}
+
+interface ProductRepository {
+    /** Wbudowana baza produktów + własne produkty użytkownika. */
+    fun observeProducts(): Flow<List<FoodProduct>>
+    suspend fun addCustomProduct(product: FoodProduct): FoodProduct
+    suspend fun deleteCustomProduct(id: Long)
 }
 
 interface DiaryRepository {

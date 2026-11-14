@@ -1,6 +1,25 @@
 package com.example.mojadieta.ui.recipes
 
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Remove
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Switch
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import com.example.mojadieta.ui.theme.CarbsColor
+import com.example.mojadieta.ui.theme.FatColor
+import com.example.mojadieta.ui.theme.ProteinColor
+import com.example.mojadieta.ui.util.formatGrams
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -130,51 +149,20 @@ private fun RecipeForm(
                 }
             }
 
-            Text("Wartości odżywcze (na porcję)", style = MaterialTheme.typography.labelLarge)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FormNumberField(
-                    label = "Kalorie (kcal)",
-                    value = form.calories,
-                    onValueChange = viewModel::onCaloriesChange,
-                    error = if (showErrors) form.caloriesError else null,
-                    decimal = false,
-                    modifier = Modifier.weight(1f)
-                )
-                FormNumberField(
-                    label = "Białko (g)",
-                    value = form.protein,
-                    onValueChange = viewModel::onProteinChange,
-                    error = if (showErrors) form.proteinError else null,
-                    modifier = Modifier.weight(1f)
-                )
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FormNumberField(
-                    label = "Węglowodany (g)",
-                    value = form.carbs,
-                    onValueChange = viewModel::onCarbsChange,
-                    error = if (showErrors) form.carbsError else null,
-                    modifier = Modifier.weight(1f)
-                )
-                FormNumberField(
-                    label = "Tłuszcze (g)",
-                    value = form.fat,
-                    onValueChange = viewModel::onFatChange,
-                    error = if (showErrors) form.fatError else null,
-                    modifier = Modifier.weight(1f)
-                )
-            }
+            IngredientsSection(form = form, viewModel = viewModel)
+
+            NutritionSection(form = form, viewModel = viewModel)
 
             OutlinedTextField(
                 value = form.ingredients,
                 onValueChange = viewModel::onIngredientsChange,
-                label = { Text("Składniki") },
-                placeholder = { Text("Każdy składnik w nowej linii, np.\n60 g płatków owsianych\n250 ml mleka") },
-                supportingText = { Text("Jeden składnik na linię") },
+                label = { Text("Dodatkowe składniki / uwagi (opcjonalnie)") },
+                placeholder = { Text("Np. sól, pieprz, zioła do smaku") },
+                supportingText = { Text("Jedna pozycja na linię – bez liczenia kalorii") },
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 140.dp)
+                    .heightIn(min = 100.dp)
             )
             OutlinedTextField(
                 value = form.instructions,
@@ -223,4 +211,196 @@ private fun FormNumberField(
         ),
         modifier = modifier
     )
+}
+
+/** Lista składników z gramaturą + przycisk dodawania z bazy produktów. */
+@Composable
+private fun IngredientsSection(form: RecipeFormState, viewModel: RecipeEditViewModel) {
+    val products by viewModel.products.collectAsStateWithLifecycle()
+    var showPicker by rememberSaveable { mutableStateOf(false) }
+    var editIndex by rememberSaveable { mutableStateOf<Int?>(null) }
+
+    Card(
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("Składniki", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Dodaj produkty z gramaturą – kalorie i makro policzą się same.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(8.dp))
+            form.ingredientItems.forEachIndexed { index, item ->
+                if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                IngredientRow(
+                    ingredient = item,
+                    modifier = Modifier
+                        .clickable { editIndex = index }
+                        .padding(vertical = 6.dp),
+                    trailing = {
+                        IconButton(onClick = { viewModel.removeIngredient(index) }) {
+                            Icon(Icons.Outlined.Close, contentDescription = "Usuń składnik")
+                        }
+                    }
+                )
+            }
+            if (form.showErrors) {
+                form.ingredientItemsError?.let {
+                    Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            Spacer(Modifier.height(4.dp))
+            OutlinedButton(onClick = { showPicker = true }, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Outlined.Add, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("Dodaj składnik z bazy")
+            }
+        }
+    }
+
+    if (showPicker) {
+        IngredientPickerSheet(
+            products = products,
+            onDismiss = { showPicker = false },
+            onAdd = { product, grams ->
+                viewModel.addIngredient(product, grams)
+                showPicker = false
+            },
+            onSaveCustomProduct = { product, onSaved -> viewModel.addCustomProduct(product, onSaved) }
+        )
+    }
+    editIndex?.let { index ->
+        form.ingredientItems.getOrNull(index)?.let { item ->
+            IngredientAmountDialog(
+                ingredient = item,
+                onDismiss = { editIndex = null },
+                onConfirm = { grams ->
+                    viewModel.updateIngredientGrams(index, grams)
+                    editIndex = null
+                }
+            )
+        }
+    }
+}
+
+/** Porcje, przełącznik automatycznego liczenia i wartości odżywcze (wyliczone albo ręczne). */
+@Composable
+private fun NutritionSection(form: RecipeFormState, viewModel: RecipeEditViewModel) {
+    val showErrors = form.showErrors
+    Card(
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest)
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Wartości odżywcze", style = MaterialTheme.typography.titleMedium)
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Liczba porcji", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                IconButton(
+                    onClick = { viewModel.onServingsChange(form.servings - 1) },
+                    enabled = form.servings > 1
+                ) { Icon(Icons.Outlined.Remove, contentDescription = "Mniej porcji") }
+                Text("${form.servings}", style = MaterialTheme.typography.titleMedium)
+                IconButton(onClick = { viewModel.onServingsChange(form.servings + 1) }) {
+                    Icon(Icons.Outlined.Add, contentDescription = "Więcej porcji")
+                }
+            }
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Licz automatycznie ze składników", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        if (form.autoNutrition) "Wartości aktualizują się przy zmianie składników"
+                        else "Wpisujesz wartości ręcznie",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(checked = form.autoNutrition, onCheckedChange = viewModel::onAutoNutritionChange)
+            }
+
+            val nutrition = form.nutrition
+            if (form.autoNutrition) {
+                val perServing = nutrition?.perServing
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                    shape = MaterialTheme.shapes.medium
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp)
+                    ) {
+                        Text(
+                            if (form.servings > 1) "Na 1 porcję (z ${form.servings})" else "Na porcję",
+                            style = MaterialTheme.typography.labelLarge
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            ComputedValue("${perServing?.calories ?: 0}", "kcal", MaterialTheme.colorScheme.primary)
+                            ComputedValue("${formatGrams(perServing?.protein ?: 0.0)} g", "Białko", ProteinColor)
+                            ComputedValue("${formatGrams(perServing?.carbs ?: 0.0)} g", "Węglowodany", CarbsColor)
+                            ComputedValue("${formatGrams(perServing?.fat ?: 0.0)} g", "Tłuszcze", FatColor)
+                        }
+                        if (form.servings > 1 && nutrition != null) {
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                "Cały przepis: ${nutrition.total.calories} kcal",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+                    }
+                }
+            } else {
+                Text("Na porcję", style = MaterialTheme.typography.labelLarge)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FormNumberField(
+                        label = "Kalorie (kcal)",
+                        value = form.calories,
+                        onValueChange = viewModel::onCaloriesChange,
+                        error = if (showErrors) form.caloriesError else null,
+                        decimal = false,
+                        modifier = Modifier.weight(1f)
+                    )
+                    FormNumberField(
+                        label = "Białko (g)",
+                        value = form.protein,
+                        onValueChange = viewModel::onProteinChange,
+                        error = if (showErrors) form.proteinError else null,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FormNumberField(
+                        label = "Węglowodany (g)",
+                        value = form.carbs,
+                        onValueChange = viewModel::onCarbsChange,
+                        error = if (showErrors) form.carbsError else null,
+                        modifier = Modifier.weight(1f)
+                    )
+                    FormNumberField(
+                        label = "Tłuszcze (g)",
+                        value = form.fat,
+                        onValueChange = viewModel::onFatChange,
+                        error = if (showErrors) form.fatError else null,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ComputedValue(value: String, label: String, color: Color) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(value, style = MaterialTheme.typography.titleMedium, color = color, fontWeight = FontWeight.Bold)
+        Text(label, style = MaterialTheme.typography.bodySmall)
+    }
 }

@@ -42,7 +42,13 @@ object AppViewModelProvider {
             )
         }
         initializer {
-            RecipeEditViewModel(createSavedStateHandle(), container().recipeRepository)
+            val c = container()
+            RecipeEditViewModel(
+                savedStateHandle = createSavedStateHandle(),
+                recipeRepository = c.recipeRepository,
+                productRepository = c.productRepository,
+                calculateRecipeNutrition = c.calculateRecipeNutrition
+            )
         }
         initializer {
             val c = container()

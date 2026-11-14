@@ -6,7 +6,9 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
+import com.example.mojadieta.data.local.entity.CustomProductEntity
 import com.example.mojadieta.data.local.entity.MealEntryEntity
+import com.example.mojadieta.data.local.entity.RecipeIngredientEntity
 import com.example.mojadieta.data.local.entity.NoteEntity
 import com.example.mojadieta.data.local.entity.PlannedMealEntity
 import com.example.mojadieta.data.local.entity.PlannedMealWithRecipe
@@ -15,23 +17,63 @@ import com.example.mojadieta.data.local.entity.WaterEntity
 import kotlinx.coroutines.flow.Flow
 
 @Dao
-interface RecipeDao {
+abstract class RecipeDao {
     @Query("SELECT * FROM recipes")
-    fun observeAll(): Flow<List<RecipeEntity>>
+    abstract fun observeAll(): Flow<List<RecipeEntity>>
 
     @Query("SELECT * FROM recipes WHERE id = :id")
-    fun observeById(id: Long): Flow<RecipeEntity?>
+    abstract fun observeById(id: Long): Flow<RecipeEntity?>
 
     @Query("SELECT * FROM recipes WHERE id = :id")
-    suspend fun getById(id: Long): RecipeEntity?
+    abstract suspend fun getById(id: Long): RecipeEntity?
 
     @Insert(onConflict = OnConflictStrategy.ABORT)
-    suspend fun insert(recipe: RecipeEntity): Long
+    abstract suspend fun insert(recipe: RecipeEntity): Long
 
     @Update
-    suspend fun update(recipe: RecipeEntity)
+    abstract suspend fun update(recipe: RecipeEntity)
 
     @Query("DELETE FROM recipes WHERE id = :id")
+    abstract suspend fun deleteById(id: Long)
+
+    // --- Składniki przepisu ---
+
+    @Query("SELECT * FROM recipe_ingredients WHERE recipeId = :recipeId ORDER BY position, id")
+    abstract fun observeIngredients(recipeId: Long): Flow<List<RecipeIngredientEntity>>
+
+    @Query("SELECT * FROM recipe_ingredients WHERE recipeId = :recipeId ORDER BY position, id")
+    abstract suspend fun getIngredients(recipeId: Long): List<RecipeIngredientEntity>
+
+    @Insert
+    abstract suspend fun insertIngredients(ingredients: List<RecipeIngredientEntity>)
+
+    @Query("DELETE FROM recipe_ingredients WHERE recipeId = :recipeId")
+    abstract suspend fun deleteIngredients(recipeId: Long)
+
+    /** Zapis przepisu i pełnej listy składników w jednej transakcji. */
+    @Transaction
+    open suspend fun saveWithIngredients(
+        recipe: RecipeEntity,
+        ingredients: List<RecipeIngredientEntity>
+    ): Long {
+        val id = if (recipe.id == 0L) insert(recipe) else recipe.id.also { update(recipe) }
+        deleteIngredients(id)
+        if (ingredients.isNotEmpty()) {
+            insertIngredients(ingredients.mapIndexed { index, item -> item.copy(id = 0, recipeId = id, position = index) })
+        }
+        return id
+    }
+}
+
+@Dao
+interface CustomProductDao {
+    @Query("SELECT * FROM custom_products ORDER BY name COLLATE NOCASE")
+    fun observeAll(): Flow<List<CustomProductEntity>>
+
+    @Insert
+    suspend fun insert(product: CustomProductEntity): Long
+
+    @Query("DELETE FROM custom_products WHERE id = :id")
     suspend fun deleteById(id: Long)
 }
 

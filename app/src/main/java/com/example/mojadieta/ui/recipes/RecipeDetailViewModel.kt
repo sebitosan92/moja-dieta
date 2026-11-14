@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.mojadieta.domain.model.MealType
 import com.example.mojadieta.domain.model.Recipe
+import com.example.mojadieta.domain.model.RecipeIngredient
 import com.example.mojadieta.domain.repository.PlannerRepository
 import com.example.mojadieta.domain.repository.RecipeRepository
 import com.example.mojadieta.domain.usecase.AddRecipeToDiaryUseCase
@@ -15,7 +16,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -23,7 +24,7 @@ import java.time.LocalDate
 sealed interface RecipeDetailState {
     data object Loading : RecipeDetailState
     data object NotFound : RecipeDetailState
-    data class Loaded(val recipe: Recipe) : RecipeDetailState
+    data class Loaded(val recipe: Recipe, val ingredients: List<RecipeIngredient> = emptyList()) : RecipeDetailState
 }
 
 class RecipeDetailViewModel(
@@ -35,8 +36,12 @@ class RecipeDetailViewModel(
 
     private val recipeId: Long = savedStateHandle.get<Long>(Routes.ARG_RECIPE_ID) ?: -1L
 
-    val state: StateFlow<RecipeDetailState> = recipeRepository.observeRecipe(recipeId)
-        .map { recipe -> if (recipe == null) RecipeDetailState.NotFound else RecipeDetailState.Loaded(recipe) }
+    val state: StateFlow<RecipeDetailState> = combine(
+        recipeRepository.observeRecipe(recipeId),
+        recipeRepository.observeIngredients(recipeId)
+    ) { recipe, ingredients ->
+        if (recipe == null) RecipeDetailState.NotFound else RecipeDetailState.Loaded(recipe, ingredients)
+    }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), RecipeDetailState.Loading)
 
     private val _messages = MutableSharedFlow<String>(extraBufferCapacity = 4)

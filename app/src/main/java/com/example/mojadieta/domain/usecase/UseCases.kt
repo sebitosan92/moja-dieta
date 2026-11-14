@@ -4,6 +4,7 @@ import com.example.mojadieta.domain.model.MealEntry
 import com.example.mojadieta.domain.model.MealType
 import com.example.mojadieta.domain.model.NutritionSummary
 import com.example.mojadieta.domain.model.Recipe
+import com.example.mojadieta.domain.model.RecipeIngredient
 import com.example.mojadieta.domain.repository.DiaryRepository
 import com.example.mojadieta.domain.repository.PlannerRepository
 import java.time.LocalDate
@@ -19,6 +20,39 @@ class CalculateNutritionSummaryUseCase {
             fat = source.sumOf { it.fat }
         )
     }
+}
+
+/** Wynik przeliczenia przepisu: cały przepis i jedna porcja. */
+data class RecipeNutrition(
+    val total: NutritionSummary,
+    val perServing: NutritionSummary
+)
+
+/** Sumuje wartości odżywcze składników i dzieli przez liczbę porcji. */
+class CalculateRecipeNutritionUseCase {
+    operator fun invoke(ingredients: List<RecipeIngredient>, servings: Int): RecipeNutrition {
+        val portions = servings.coerceAtLeast(1)
+        val kcal = ingredients.sumOf { it.calories }
+        val protein = ingredients.sumOf { it.protein }
+        val carbs = ingredients.sumOf { it.carbs }
+        val fat = ingredients.sumOf { it.fat }
+        return RecipeNutrition(
+            total = NutritionSummary(
+                calories = Math.round(kcal).toInt(),
+                protein = round1(protein),
+                carbs = round1(carbs),
+                fat = round1(fat)
+            ),
+            perServing = NutritionSummary(
+                calories = Math.round(kcal / portions).toInt(),
+                protein = round1(protein / portions),
+                carbs = round1(carbs / portions),
+                fat = round1(fat / portions)
+            )
+        )
+    }
+
+    private fun round1(value: Double): Double = Math.round(value * 10.0) / 10.0
 }
 
 /** Dodaje przepis jako wpis w dzienniku wybranego dnia. */

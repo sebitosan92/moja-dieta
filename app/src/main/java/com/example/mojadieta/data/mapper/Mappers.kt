@@ -1,10 +1,14 @@
 package com.example.mojadieta.data.mapper
 
+import com.example.mojadieta.data.local.entity.CustomProductEntity
 import com.example.mojadieta.data.local.entity.MealEntryEntity
+import com.example.mojadieta.data.local.entity.RecipeIngredientEntity
 import com.example.mojadieta.data.local.entity.NoteEntity
 import com.example.mojadieta.data.local.entity.PlannedMealWithRecipe
 import com.example.mojadieta.data.local.entity.RecipeEntity
+import com.example.mojadieta.domain.model.FoodProduct
 import com.example.mojadieta.domain.model.MealEntry
+import com.example.mojadieta.domain.model.RecipeIngredient
 import com.example.mojadieta.domain.model.MealType
 import com.example.mojadieta.domain.model.Note
 import com.example.mojadieta.domain.model.PlannedMeal
@@ -21,7 +25,9 @@ fun RecipeEntity.toDomain() = Recipe(
     carbs = carbs,
     fat = fat,
     ingredients = ingredients,
-    instructions = instructions
+    instructions = instructions,
+    servings = servings,
+    autoNutrition = autoNutrition
 )
 
 fun Recipe.toEntity() = RecipeEntity(
@@ -33,7 +39,40 @@ fun Recipe.toEntity() = RecipeEntity(
     carbs = carbs,
     fat = fat,
     ingredients = ingredients,
-    instructions = instructions
+    instructions = instructions,
+    servings = servings,
+    autoNutrition = autoNutrition
+)
+
+fun RecipeIngredientEntity.toDomain() = RecipeIngredient(
+    id = id,
+    name = name,
+    grams = grams,
+    kcal100 = kcal100,
+    protein100 = protein100,
+    carbs100 = carbs100,
+    fat100 = fat100
+)
+
+fun RecipeIngredient.toEntity(recipeId: Long, position: Int) = RecipeIngredientEntity(
+    id = id,
+    recipeId = recipeId,
+    position = position,
+    name = name,
+    grams = grams,
+    kcal100 = kcal100,
+    protein100 = protein100,
+    carbs100 = carbs100,
+    fat100 = fat100
+)
+
+fun CustomProductEntity.toDomain() = FoodProduct(
+    name = name,
+    kcal = kcal,
+    protein = protein,
+    carbs = carbs,
+    fat = fat,
+    customId = id
 )
 
 fun MealEntryEntity.toDomain() = MealEntry(

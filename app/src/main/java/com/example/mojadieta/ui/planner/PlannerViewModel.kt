@@ -77,6 +77,10 @@ class PlannerViewModel(
 
     fun nextWeek() = weekStart.update { it.plusDays(7) }
 
+    fun goToWeekOf(date: LocalDate) {
+        weekStart.value = date.startOfWeek()
+    }
+
     fun currentWeek() {
         weekStart.value = LocalDate.now().startOfWeek()
     }

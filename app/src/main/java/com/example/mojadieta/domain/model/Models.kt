@@ -38,7 +38,11 @@ data class Recipe(
     val carbs: Double,
     val fat: Double,
     val ingredients: String,
-    val instructions: String
+    val instructions: String,
+    /** Na ile porcji jest przepis – wartości odżywcze są podawane na 1 porcję. */
+    val servings: Int = 1,
+    /** true = kalorie i makro wyliczane automatycznie ze składników z gramaturą. */
+    val autoNutrition: Boolean = false
 ) {
     val ingredientList: List<String>
         get() = ingredients.lines().map { it.trim().removePrefix("-").trim() }.filter { it.isNotBlank() }
@@ -87,6 +91,50 @@ data class Note(
     val createdAt: Long,
     val updatedAt: Long
 )
+
+/**
+ * Produkt spożywczy z wartościami na 100 g.
+ * [unitName]/[unitGrams] – typowa porcja, np. „szt.” = 50 g dla jajka.
+ */
+data class FoodProduct(
+    val name: String,
+    val kcal: Double,
+    val protein: Double,
+    val carbs: Double,
+    val fat: Double,
+    val unitName: String? = null,
+    val unitGrams: Double? = null,
+    val customId: Long? = null
+) {
+    val isCustom: Boolean get() = customId != null
+}
+
+/** Składnik przepisu z gramaturą. Wartości na 100 g są zapisane jako kopia z chwili dodania. */
+data class RecipeIngredient(
+    val id: Long = 0,
+    val name: String,
+    val grams: Double,
+    val kcal100: Double,
+    val protein100: Double,
+    val carbs100: Double,
+    val fat100: Double
+) {
+    val calories: Double get() = kcal100 * grams / 100.0
+    val protein: Double get() = protein100 * grams / 100.0
+    val carbs: Double get() = carbs100 * grams / 100.0
+    val fat: Double get() = fat100 * grams / 100.0
+
+    companion object {
+        fun from(product: FoodProduct, grams: Double) = RecipeIngredient(
+            name = product.name,
+            grams = grams,
+            kcal100 = product.kcal,
+            protein100 = product.protein,
+            carbs100 = product.carbs,
+            fat100 = product.fat
+        )
+    }
+}
 
 data class NutritionSummary(
     val calories: Int = 0,

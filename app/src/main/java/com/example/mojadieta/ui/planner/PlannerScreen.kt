@@ -19,7 +19,7 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ContentCopy
-import androidx.compose.material.icons.outlined.Today
+import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -57,11 +57,13 @@ import com.example.mojadieta.domain.model.MealType
 import com.example.mojadieta.domain.model.PlannedMeal
 import com.example.mojadieta.domain.model.Recipe
 import com.example.mojadieta.ui.AppViewModelProvider
+import com.example.mojadieta.ui.components.DateJumpDialog
 import com.example.mojadieta.ui.components.MealTypeChips
 import com.example.mojadieta.ui.components.RecipePickerList
 import com.example.mojadieta.ui.components.icon
 import com.example.mojadieta.ui.util.dayMonth
 import com.example.mojadieta.ui.util.fullDayName
+import com.example.mojadieta.ui.util.startOfWeek
 import com.example.mojadieta.ui.util.weekRangeLabel
 import java.time.LocalDate
 
@@ -72,6 +74,18 @@ fun PlannerScreen(viewModel: PlannerViewModel = viewModel(factory = AppViewModel
     val snackbarHostState = remember { SnackbarHostState() }
     // Dzień (epochDay), dla którego otwarto arkusz planowania; null = zamknięty.
     var planForEpochDay by rememberSaveable { mutableStateOf<Long?>(null) }
+    var showDatePicker by rememberSaveable { mutableStateOf(false) }
+
+    if (showDatePicker) {
+        DateJumpDialog(
+            initialDate = state.weekStart,
+            onDismiss = { showDatePicker = false },
+            onDateSelected = {
+                viewModel.goToWeekOf(it)
+                showDatePicker = false
+            }
+        )
+    }
 
     LaunchedEffect(viewModel) {
         viewModel.messages.collect { snackbarHostState.showSnackbar(it) }
@@ -83,8 +97,11 @@ fun PlannerScreen(viewModel: PlannerViewModel = viewModel(factory = AppViewModel
             TopAppBar(
                 title = { Text("Planer posiłków") },
                 actions = {
-                    IconButton(onClick = viewModel::currentWeek) {
-                        Icon(Icons.Outlined.Today, contentDescription = "Bieżący tydzień")
+                    if (state.weekStart != LocalDate.now().startOfWeek()) {
+                        TextButton(onClick = viewModel::currentWeek) { Text("Ten tydzień") }
+                    }
+                    IconButton(onClick = { showDatePicker = true }) {
+                        Icon(Icons.Outlined.CalendarMonth, contentDescription = "Wybierz tydzień z kalendarza")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)

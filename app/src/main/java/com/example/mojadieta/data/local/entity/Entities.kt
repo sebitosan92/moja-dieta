@@ -1,5 +1,6 @@
 package com.example.mojadieta.data.local.entity
 
+import androidx.room.ColumnInfo
 import androidx.room.Embedded
 import androidx.room.Entity
 import androidx.room.ForeignKey
@@ -17,7 +18,46 @@ data class RecipeEntity(
     val carbs: Double,
     val fat: Double,
     val ingredients: String,
-    val instructions: String
+    val instructions: String,
+    // Kolumny dodane w wersji 2 bazy (migracja 1→2) – stąd wartości domyślne.
+    @ColumnInfo(defaultValue = "1") val servings: Int = 1,
+    @ColumnInfo(defaultValue = "0") val autoNutrition: Boolean = false
+)
+
+/** Składnik przepisu z gramaturą i wartościami na 100 g (wersja 2 bazy). */
+@Entity(
+    tableName = "recipe_ingredients",
+    foreignKeys = [
+        ForeignKey(
+            entity = RecipeEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["recipeId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [Index("recipeId")]
+)
+data class RecipeIngredientEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val recipeId: Long,
+    val position: Int,
+    val name: String,
+    val grams: Double,
+    val kcal100: Double,
+    val protein100: Double,
+    val carbs100: Double,
+    val fat100: Double
+)
+
+/** Własny produkt użytkownika (wartości na 100 g). */
+@Entity(tableName = "custom_products")
+data class CustomProductEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    val kcal: Double,
+    val protein: Double,
+    val carbs: Double,
+    val fat: Double
 )
 
 /** Wpis posiłku w dzienniku. Data przechowywana jako epochDay (LocalDate.toEpochDay()). */

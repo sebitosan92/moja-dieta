@@ -32,6 +32,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -60,6 +61,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.mojadieta.domain.model.MealType
 import com.example.mojadieta.domain.model.Recipe
+import com.example.mojadieta.domain.model.RecipeIngredient
 import com.example.mojadieta.ui.AppViewModelProvider
 import com.example.mojadieta.ui.components.ConfirmDeleteDialog
 import com.example.mojadieta.ui.components.EmptyState
@@ -139,6 +141,7 @@ fun RecipeDetailScreen(
 
             is RecipeDetailState.Loaded -> RecipeDetailContent(
                 recipe = current.recipe,
+                ingredients = current.ingredients,
                 onAddToToday = { showAddToToday = true },
                 onPlan = { showPlanDialog = true },
                 modifier = Modifier
@@ -184,6 +187,7 @@ fun RecipeDetailScreen(
 @Composable
 private fun RecipeDetailContent(
     recipe: Recipe,
+    ingredients: List<RecipeIngredient>,
     onAddToToday: () -> Unit,
     onPlan: () -> Unit,
     modifier: Modifier = Modifier
@@ -197,7 +201,13 @@ private fun RecipeDetailContent(
         Column {
             Text(recipe.name, style = MaterialTheme.typography.headlineSmall)
             Spacer(Modifier.height(8.dp))
-            AssistChip(onClick = {}, label = { Text(recipe.category.label) })
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                AssistChip(onClick = {}, label = { Text(recipe.category.label) })
+                if (recipe.servings > 1) {
+                    AssistChip(onClick = {}, label = { Text("Porcje: ${recipe.servings}") })
+                }
+                if (recipe.autoNutrition) AutoNutritionBadge()
+            }
         }
 
         Card(
@@ -210,7 +220,7 @@ private fun RecipeDetailContent(
                     .padding(vertical = 18.dp, horizontal = 12.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                NutritionValue("${recipe.calories}", "kcal", MaterialTheme.colorScheme.primary)
+                NutritionValue("${recipe.calories}", if (recipe.servings > 1) "kcal / porcja" else "kcal", MaterialTheme.colorScheme.primary)
                 NutritionValue("${formatGrams(recipe.protein)} g", "Białko", ProteinColor)
                 NutritionValue("${formatGrams(recipe.carbs)} g", "Węglowodany", CarbsColor)
                 NutritionValue("${formatGrams(recipe.fat)} g", "Tłuszcze", FatColor)
@@ -229,7 +239,15 @@ private fun RecipeDetailContent(
         }
 
         SectionCard(title = "Składniki") {
-            if (recipe.ingredientList.isEmpty()) {
+            ingredients.forEachIndexed { index, item ->
+                if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                IngredientRow(ingredient = item, modifier = Modifier.padding(vertical = 6.dp))
+            }
+            if (ingredients.isNotEmpty() && recipe.ingredientList.isNotEmpty()) {
+                Spacer(Modifier.height(10.dp))
+                Text("Dodatkowo:", style = MaterialTheme.typography.labelLarge)
+            }
+            if (recipe.ingredientList.isEmpty() && ingredients.isEmpty()) {
                 Text("Brak składników.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
                 recipe.ingredientList.forEach { ingredient ->

@@ -10,7 +10,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.outlined.Today
+import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
@@ -18,6 +18,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -32,6 +33,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.mojadieta.domain.model.MealType
 import com.example.mojadieta.ui.AppViewModelProvider
 import com.example.mojadieta.ui.components.WeekSelector
+import com.example.mojadieta.ui.components.DateJumpDialog
 import com.example.mojadieta.ui.util.fullPolishDate
 import java.time.LocalDate
 
@@ -43,6 +45,18 @@ fun DiaryScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var addMealFor by rememberSaveable { mutableStateOf<MealType?>(null) }
+    var showDatePicker by rememberSaveable { mutableStateOf(false) }
+
+    if (showDatePicker) {
+        DateJumpDialog(
+            initialDate = state.selectedDate,
+            onDismiss = { showDatePicker = false },
+            onDateSelected = {
+                viewModel.selectDate(it)
+                showDatePicker = false
+            }
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -59,8 +73,11 @@ fun DiaryScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = viewModel::goToToday) {
-                        Icon(Icons.Outlined.Today, contentDescription = "Przejdź do dzisiaj")
+                    if (state.selectedDate != LocalDate.now()) {
+                        TextButton(onClick = viewModel::goToToday) { Text("Dziś") }
+                    }
+                    IconButton(onClick = { showDatePicker = true }) {
+                        Icon(Icons.Outlined.CalendarMonth, contentDescription = "Wybierz dzień z kalendarza")
                     }
                     IconButton(onClick = onOpenAbout) {
                         Icon(Icons.Outlined.Info, contentDescription = "O aplikacji i aktualizacje")

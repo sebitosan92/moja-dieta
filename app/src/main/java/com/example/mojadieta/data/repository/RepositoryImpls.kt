@@ -1,15 +1,20 @@
 package com.example.mojadieta.data.repository
 
+import com.example.mojadieta.data.food.FoodCatalog
+import com.example.mojadieta.data.local.dao.CustomProductDao
 import com.example.mojadieta.data.local.dao.MealEntryDao
 import com.example.mojadieta.data.local.dao.NoteDao
 import com.example.mojadieta.data.local.dao.PlannedMealDao
 import com.example.mojadieta.data.local.dao.RecipeDao
 import com.example.mojadieta.data.local.dao.WaterDao
+import com.example.mojadieta.data.local.entity.CustomProductEntity
 import com.example.mojadieta.data.local.entity.PlannedMealEntity
 import com.example.mojadieta.data.mapper.toDomain
 import com.example.mojadieta.data.mapper.toDomainOrNull
 import com.example.mojadieta.data.mapper.toEntity
+import com.example.mojadieta.domain.model.FoodProduct
 import com.example.mojadieta.domain.model.MealEntry
+import com.example.mojadieta.domain.model.RecipeIngredient
 import com.example.mojadieta.domain.model.MealType
 import com.example.mojadieta.domain.model.Note
 import com.example.mojadieta.domain.model.PlannedMeal
@@ -18,6 +23,7 @@ import com.example.mojadieta.domain.model.WaterIntake
 import com.example.mojadieta.domain.repository.DiaryRepository
 import com.example.mojadieta.domain.repository.NoteRepository
 import com.example.mojadieta.domain.repository.PlannerRepository
+import com.example.mojadieta.domain.repository.ProductRepository
 import com.example.mojadieta.domain.repository.RecipeRepository
 import com.example.mojadieta.domain.repository.WaterRepository
 import kotlinx.coroutines.flow.Flow
@@ -43,6 +49,38 @@ class RecipeRepositoryImpl(private val dao: RecipeDao) : RecipeRepository {
         }
 
     override suspend fun deleteRecipe(id: Long) = dao.deleteById(id)
+
+    override fun observeIngredients(recipeId: Long): Flow<List<RecipeIngredient>> =
+        dao.observeIngredients(recipeId).map { list -> list.map { it.toDomain() } }
+
+    override suspend fun getIngredients(recipeId: Long): List<RecipeIngredient> =
+        dao.getIngredients(recipeId).map { it.toDomain() }
+
+    override suspend fun saveRecipeWithIngredients(recipe: Recipe, ingredients: List<RecipeIngredient>): Long =
+        dao.saveWithIngredients(
+            recipe.toEntity(),
+            ingredients.mapIndexed { index, item -> item.toEntity(recipe.id, index) }
+        )
+}
+
+class ProductRepositoryImpl(private val dao: CustomProductDao) : ProductRepository {
+    override fun observeProducts(): Flow<List<FoodProduct>> =
+        dao.observeAll().map { custom -> custom.map { it.toDomain() } + FoodCatalog.products }
+
+    override suspend fun addCustomProduct(product: FoodProduct): FoodProduct {
+        val id = dao.insert(
+            CustomProductEntity(
+                name = product.name.trim(),
+                kcal = product.kcal,
+                protein = product.protein,
+                carbs = product.carbs,
+                fat = product.fat
+            )
+        )
+        return product.copy(name = product.name.trim(), customId = id)
+    }
+
+    override suspend fun deleteCustomProduct(id: Long) = dao.deleteById(id)
 }
 
 class DiaryRepositoryImpl(private val dao: MealEntryDao) : DiaryRepository {

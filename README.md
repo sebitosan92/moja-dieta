@@ -25,24 +25,6 @@ Natywna aplikacja dietetyczna na Androida: dziennik posiłków z licznikiem wody
 
 Kotlin · Jetpack Compose · Material 3 · Room · Navigation Compose · WorkManager · CameraX · ML Kit · Glance · Health Connect · Coil · MVVM + Clean Architecture.
 
-## Budowanie
-
-Wymagane Android Studio (zawiera JDK). W folderze projektu:
-
-```powershell
-.\gradlew.bat assembleDebug
-```
-
-## Wydawanie nowej wersji
-
-Wersje release są podpisywane kluczem z pliku `keystore/moja-dieta-release.jks` (dane w `keystore.properties`). **Te pliki nie trafiają do repozytorium** — trzymaj ich kopię zapasową. Bez tego samego klucza telefony nie zainstalują aktualizacji.
-
-```powershell
-.\wydaj-wersje.ps1 -Wersja 1.2.0 -Opis "Co się zmieniło w tej wersji"
-```
-
-Skrypt podbija numer wersji, buduje podpisany APK, wysyła zmiany na GitHub i tworzy wydanie.
-
 ## Źródła danych i licencje
 
 - Dane produktów ze skanera i wyszukiwania online: [Open Food Facts](https://world.openfoodfacts.org), licencja [Open Database License (ODbL)](https://opendatacommons.org/licenses/odbl/1-0/).

@@ -19,3 +19,6 @@ keystore.properties
 # Pliki APK kopiowane przy wydawaniu
 *.apk
 /build.log
+
+# Lokalne notatki autora (budowanie, wydawanie, klucz)
+NOTATKI.md

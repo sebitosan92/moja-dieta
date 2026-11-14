@@ -22,3 +22,7 @@ keystore.properties
 
 # Lokalne notatki autora (budowanie, wydawanie, klucz)
 NOTATKI.md
+
+# Narzędzia tylko dla autora (zostają lokalnie, nie trafiają na GitHub)
+wydaj-wersje.ps1
+/app/src/test/

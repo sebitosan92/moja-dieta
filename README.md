@@ -42,3 +42,9 @@ Wersje release są podpisywane kluczem z pliku `keystore/moja-dieta-release.jks`
 ```
 
 Skrypt podbija numer wersji, buduje podpisany APK, wysyła zmiany na GitHub i tworzy wydanie.
+
+## Źródła danych i licencje
+
+- Dane produktów ze skanera i wyszukiwania online: [Open Food Facts](https://world.openfoodfacts.org), licencja [Open Database License (ODbL)](https://opendatacommons.org/licenses/odbl/1-0/).
+- Biblioteki open source na licencji [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0): Kotlin, Kotlin Coroutines, Android Jetpack (Compose, Material 3, Material Icons, Navigation, Lifecycle, Room, WorkManager, CameraX, Glance, Health Connect, Core, Activity, ExifInterface), Coil.
+- Skaner kodów i rozpoznawanie tekstu: Google ML Kit ([warunki](https://developers.google.com/ml-kit/terms)).

@@ -20,6 +20,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.Code
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.CloudDownload
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.InstallMobile
@@ -139,6 +143,8 @@ fun AboutScreen(viewModel: UpdateViewModel, onBack: () -> Unit) {
                     }
                 }
             }
+
+            DataSourcesCard()
 
             Text(
                 "Aktualizacje są pobierane z publicznego repozytorium aplikacji na GitHubie. " +
@@ -349,3 +355,100 @@ fun UpdatePromptDialog(release: AppRelease, onUpdate: () -> Unit, onLater: () ->
 
 private fun formatSize(bytes: Long): String =
     String.format(Locale.forLanguageTag("pl-PL"), "%.1f MB", bytes / 1_048_576.0)
+
+/** Źródła danych i wymagane przypisanie autorstwa (Open Food Facts, licencja ODbL). */
+@Composable
+private fun DataSourcesCard() {
+    val uriHandler = LocalUriHandler.current
+    Card(
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest)
+    ) {
+        Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Źródła danych", style = MaterialTheme.typography.titleMedium)
+            Row(verticalAlignment = Alignment.Top) {
+                Icon(
+                    Icons.Outlined.Public,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+                Spacer(Modifier.width(12.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Open Food Facts", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Dane produktów ze skanera kodów kreskowych i wyszukiwania w internecie pochodzą z otwartej, " +
+                            "tworzonej przez społeczność bazy Open Food Facts, udostępnianej na licencji " +
+                            "Open Database License (ODbL). Wartości mogą zawierać błędy – w razie wątpliwości sprawdź etykietę.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Row {
+                        TextButton(onClick = { uriHandler.openUri("https://world.openfoodfacts.org") }) {
+                            Text("openfoodfacts.org")
+                        }
+                        TextButton(onClick = { uriHandler.openUri("https://opendatacommons.org/licenses/odbl/1-0/") }) {
+                            Text("Licencja ODbL")
+                        }
+                    }
+                }
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            Row(verticalAlignment = Alignment.Top) {
+                Icon(
+                    Icons.Outlined.Info,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    "Wbudowana baza produktów zawiera orientacyjne wartości odżywcze na 100 g dla popularnych produktów. " +
+                        "Kalkulator celu korzysta ze wzoru Mifflina-St Jeora.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            Row(verticalAlignment = Alignment.Top) {
+                Icon(
+                    Icons.Outlined.Code,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+                Spacer(Modifier.width(12.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Biblioteki i usługi", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Aplikacja korzysta z bibliotek open source na licencji Apache License 2.0: " +
+                            OPEN_SOURCE_LIBRARIES.joinToString(", ") + ".",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        "Skaner kodów kreskowych i rozpoznawanie tekstu działają dzięki Google ML Kit " +
+                            "(przetwarzanie na telefonie, zgodnie z warunkami ML Kit).",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Row {
+                        TextButton(onClick = { uriHandler.openUri("https://www.apache.org/licenses/LICENSE-2.0") }) {
+                            Text("Apache 2.0")
+                        }
+                        TextButton(onClick = { uriHandler.openUri("https://developers.google.com/ml-kit/terms") }) {
+                            Text("Warunki ML Kit")
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private val OPEN_SOURCE_LIBRARIES = listOf(
+    "Kotlin i Kotlin Coroutines (JetBrains)",
+    "Android Jetpack: Compose, Material 3, Material Icons, Navigation, Lifecycle, Room, WorkManager, " +
+        "CameraX, Glance, Health Connect, Core, Activity, ExifInterface (Google / AOSP)",
+    "Coil (Coil Contributors)"
+)

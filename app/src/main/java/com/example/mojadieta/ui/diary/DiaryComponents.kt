@@ -1,6 +1,29 @@
 package com.example.mojadieta.ui.diary
 
 import androidx.compose.foundation.layout.Arrangement
+import com.example.mojadieta.ui.util.parseDecimal
+import com.example.mojadieta.ui.util.formatServings
+import com.example.mojadieta.ui.util.dayMonth
+import com.example.mojadieta.ui.components.StoredPhoto
+import com.example.mojadieta.ui.components.PhotoField
+import com.example.mojadieta.ui.components.PhotoAspect
+import com.example.mojadieta.ui.components.MealTypeChips
+import com.example.mojadieta.domain.model.WeightEntry
+import com.example.mojadieta.domain.model.DailyGoal
+import com.example.mojadieta.data.images.ImageStorage
+import androidx.compose.ui.draw.clip
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Button
+import androidx.compose.material.icons.outlined.MonitorWeight
+import androidx.compose.material.icons.outlined.Flag
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -57,24 +80,40 @@ import com.example.mojadieta.ui.theme.WaterColor
 import com.example.mojadieta.ui.theme.WaterContainer
 import com.example.mojadieta.ui.util.formatGrams
 
-/** Karta podsumowania dnia: kalorie zjedzone vs. wszystkie wpisy oraz makroskładniki. */
+/** Karta podsumowania dnia: kalorie i makro – względem celu (jeśli ustawiony). */
 @Composable
-fun DaySummaryCard(eaten: NutritionSummary, total: NutritionSummary, modifier: Modifier = Modifier) {
+fun DaySummaryCard(
+    eaten: NutritionSummary,
+    total: NutritionSummary,
+    goal: DailyGoal?,
+    onSetGoal: () -> Unit,
+    modifier: Modifier = Modifier
+) {
     Card(
         modifier = modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest)
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
-            Text("Podsumowanie dnia", style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(16.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(contentAlignment = Alignment.Center, modifier = Modifier.size(112.dp)) {
-                    val progress = if (total.calories > 0) eaten.calories.toFloat() / total.calories else 0f
+                Text("Podsumowanie dnia", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                TextButton(onClick = onSetGoal) {
+                    Icon(Icons.Outlined.Flag, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text(if (goal == null) "Ustaw cel" else "Cel")
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.size(116.dp)) {
+                    val reference = goal?.calories ?: total.calories
+                    val progress = if (reference > 0) eaten.calories.toFloat() / reference else 0f
+                    val over = goal != null && eaten.calories > goal.calories
                     CircularProgressIndicator(
                         progress = { progress.coerceIn(0f, 1f) },
-                        modifier = Modifier.size(112.dp),
+                        modifier = Modifier.size(116.dp),
                         strokeWidth = 10.dp,
+                        color = if (over) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary,
                         trackColor = MaterialTheme.colorScheme.primaryContainer,
                         strokeCap = StrokeCap.Round
                     )
@@ -84,17 +123,28 @@ fun DaySummaryCard(eaten: NutritionSummary, total: NutritionSummary, modifier: M
                             style = MaterialTheme.typography.headlineSmall,
                             color = MaterialTheme.colorScheme.primary
                         )
-                        Text("kcal zjedzone", style = MaterialTheme.typography.bodySmall)
+                        Text(
+                            if (goal != null) "z ${goal.calories} kcal" else "kcal zjedzone",
+                            style = MaterialTheme.typography.bodySmall
+                        )
                     }
                 }
                 Spacer(Modifier.width(20.dp))
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    MacroProgress("Białko", eaten.protein, total.protein, ProteinColor)
-                    MacroProgress("Węglowodany", eaten.carbs, total.carbs, CarbsColor)
-                    MacroProgress("Tłuszcze", eaten.fat, total.fat, FatColor)
+                    MacroProgress("Białko", eaten.protein, goal?.protein?.toDouble() ?: total.protein, ProteinColor)
+                    MacroProgress("Węglowodany", eaten.carbs, goal?.carbs?.toDouble() ?: total.carbs, CarbsColor)
+                    MacroProgress("Tłuszcze", eaten.fat, goal?.fat?.toDouble() ?: total.fat, FatColor)
                 }
             }
             Spacer(Modifier.height(12.dp))
+            if (goal != null) {
+                val left = goal.calories - eaten.calories
+                Text(
+                    text = if (left >= 0) "Zostało $left kcal" else "Cel przekroczony o ${-left} kcal",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = if (left >= 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary
+                )
+            }
             Text(
                 text = "W dzienniku: ${total.calories} kcal · zaznacz posiłki jako zjedzone, aby je zliczyć",
                 style = MaterialTheme.typography.bodySmall,
@@ -105,19 +155,19 @@ fun DaySummaryCard(eaten: NutritionSummary, total: NutritionSummary, modifier: M
 }
 
 @Composable
-private fun MacroProgress(label: String, eaten: Double, total: Double, color: Color) {
+private fun MacroProgress(label: String, eaten: Double, target: Double, color: Color) {
     Column {
         Row(modifier = Modifier.fillMaxWidth()) {
             Text(label, style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
             Text(
-                "${formatGrams(eaten)} / ${formatGrams(total)} g",
+                "${formatGrams(eaten)} / ${formatGrams(target)} g",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
         Spacer(Modifier.height(4.dp))
         LinearProgressIndicator(
-            progress = { if (total > 0) (eaten / total).toFloat().coerceIn(0f, 1f) else 0f },
+            progress = { if (target > 0) (eaten / target).toFloat().coerceIn(0f, 1f) else 0f },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(6.dp),
@@ -126,6 +176,43 @@ private fun MacroProgress(label: String, eaten: Double, total: Double, color: Co
             strokeCap = StrokeCap.Round,
             drawStopIndicator = {}
         )
+    }
+}
+
+/** Karta wagi w dzienniku: ostatni pomiar i przejście do historii. */
+@Composable
+fun WeightCard(latest: WeightEntry?, onOpen: () -> Unit, modifier: Modifier = Modifier) {
+    Card(
+        onClick = onOpen,
+        modifier = modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Outlined.MonitorWeight, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Waga", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    if (latest == null) "Dodaj pierwszy pomiar lub połącz z Health Connect"
+                    else "Ostatni pomiar: ${latest.date.dayMonth()}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            if (latest != null) {
+                Text(
+                    "${formatGrams(latest.weightKg)} kg",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            } else {
+                Icon(Icons.Outlined.Add, contentDescription = null)
+            }
+        }
     }
 }
 
@@ -250,6 +337,7 @@ fun MealSectionCard(
     entries: List<MealEntry>,
     onAddClick: () -> Unit,
     onToggleEaten: (MealEntry) -> Unit,
+    onEntryClick: (MealEntry) -> Unit,
     onDelete: (MealEntry) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -274,7 +362,12 @@ fun MealSectionCard(
                 Spacer(Modifier.height(4.dp))
                 entries.forEachIndexed { index, entry ->
                     if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    MealEntryRow(entry, onToggleEaten = { onToggleEaten(entry) }, onDelete = { onDelete(entry) })
+                    MealEntryRow(
+                        entry,
+                        onToggleEaten = { onToggleEaten(entry) },
+                        onClick = { onEntryClick(entry) },
+                        onDelete = { onDelete(entry) }
+                    )
                 }
             }
             TextButton(onClick = onAddClick) {
@@ -287,14 +380,25 @@ fun MealSectionCard(
 }
 
 @Composable
-private fun MealEntryRow(entry: MealEntry, onToggleEaten: () -> Unit, onDelete: () -> Unit) {
+private fun MealEntryRow(entry: MealEntry, onToggleEaten: () -> Unit, onClick: () -> Unit, onDelete: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .clip(MaterialTheme.shapes.small)
+            .clickable(onClick = onClick)
             .padding(vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Checkbox(checked = entry.isEaten, onCheckedChange = { onToggleEaten() })
+        if (entry.imagePath != null) {
+            StoredPhoto(
+                entry.imagePath,
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(MaterialTheme.shapes.small)
+            )
+            Spacer(Modifier.width(10.dp))
+        }
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = entry.name,
@@ -305,15 +409,27 @@ private fun MealEntryRow(entry: MealEntry, onToggleEaten: () -> Unit, onDelete: 
                 color = if (entry.isEaten) MaterialTheme.colorScheme.onSurface
                 else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f)
             )
+            val compact = entry.servings == 1.0 && entry.imagePath == null
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     "${entry.calories} kcal",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.primary
                 )
-                Spacer(Modifier.width(10.dp))
-                MacroInlineRow(entry.protein, entry.carbs, entry.fat)
+                if (entry.servings != 1.0) {
+                    Text(
+                        " · ${formatServings(entry.servings)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.secondary
+                    )
+                }
+                if (compact) {
+                    Spacer(Modifier.width(10.dp))
+                    MacroInlineRow(entry.protein, entry.carbs, entry.fat)
+                }
             }
+            // Przy zdjęciu lub porcjach makro w osobnej linii, żeby się nie ściskały.
+            if (!compact) MacroInlineRow(entry.protein, entry.carbs, entry.fat)
         }
         IconButton(onClick = onDelete) {
             Icon(
@@ -321,6 +437,84 @@ private fun MealEntryRow(entry: MealEntry, onToggleEaten: () -> Unit, onDelete: 
                 contentDescription = "Usuń posiłek",
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
+        }
+    }
+}
+
+/** Edycja wpisu: liczba porcji, pora posiłku i zdjęcie. */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+fun EditMealEntrySheet(
+    entry: MealEntry,
+    imageStorage: ImageStorage,
+    onDismiss: () -> Unit,
+    onSave: (servings: Double, mealType: MealType, imagePath: String?) -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var servingsText by rememberSaveable(entry.id) { mutableStateOf(formatGrams(entry.servings)) }
+    var mealType by rememberSaveable(entry.id) { mutableStateOf(entry.mealType) }
+    var imagePath by rememberSaveable(entry.id) { mutableStateOf(entry.imagePath) }
+    val servings = parseDecimal(servingsText)?.takeIf { it > 0 && it <= 20 }
+    val factor = (servings ?: entry.servings) / entry.servings
+
+    ModalBottomSheet(onDismissRequest = {
+        // Zdjęcie dodane, ale niezapisane – sprzątamy.
+        if (imagePath != entry.imagePath) imageStorage.delete(imagePath)
+        onDismiss()
+    }, sheetState = sheetState) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(entry.name, style = MaterialTheme.typography.titleLarge)
+            Text("Pora posiłku", style = MaterialTheme.typography.labelLarge)
+            MealTypeChips(selected = mealType, onSelect = { mealType = it })
+            Text("Liczba porcji", style = MaterialTheme.typography.labelLarge)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(0.5, 1.0, 1.5, 2.0, 3.0).forEach { value ->
+                    FilterChip(
+                        selected = servings == value,
+                        onClick = { servingsText = formatGrams(value) },
+                        label = { Text(if (value == 0.5) "½" else if (value == 1.5) "1½" else formatGrams(value)) }
+                    )
+                }
+            }
+            OutlinedTextField(
+                value = servingsText,
+                onValueChange = { input -> servingsText = input.filter { it.isDigit() || it == ',' || it == '.' }.take(5) },
+                label = { Text("Porcje") },
+                singleLine = true,
+                isError = servings == null,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                modifier = Modifier.fillMaxWidth()
+            )
+            Text(
+                "${Math.round(entry.calories * factor)} kcal · B ${formatGrams(entry.protein * factor)} g · " +
+                    "W ${formatGrams(entry.carbs * factor)} g · T ${formatGrams(entry.fat * factor)} g",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Text("Zdjęcie posiłku", style = MaterialTheme.typography.labelLarge)
+            PhotoField(
+                imagePath = imagePath,
+                aspect = PhotoAspect.MEAL,
+                imageStorage = imageStorage,
+                onImageChanged = { newPath ->
+                    val previous = imagePath
+                    if (previous != null && previous != entry.imagePath && previous != newPath) imageStorage.delete(previous)
+                    imagePath = newPath
+                },
+                imageWidthFraction = 0.6f
+            )
+            Button(
+                onClick = { servings?.let { onSave(it, mealType, imagePath) } },
+                enabled = servings != null,
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("Zapisz zmiany") }
         }
     }
 }

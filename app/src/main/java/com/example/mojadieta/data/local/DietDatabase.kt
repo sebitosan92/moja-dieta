@@ -12,6 +12,7 @@ import com.example.mojadieta.data.local.dao.NoteDao
 import com.example.mojadieta.data.local.dao.PlannedMealDao
 import com.example.mojadieta.data.local.dao.RecipeDao
 import com.example.mojadieta.data.local.dao.WaterDao
+import com.example.mojadieta.data.local.dao.WeightDao
 import com.example.mojadieta.data.local.entity.CustomProductEntity
 import com.example.mojadieta.data.local.entity.MealEntryEntity
 import com.example.mojadieta.data.local.entity.NoteEntity
@@ -19,6 +20,7 @@ import com.example.mojadieta.data.local.entity.PlannedMealEntity
 import com.example.mojadieta.data.local.entity.RecipeEntity
 import com.example.mojadieta.data.local.entity.RecipeIngredientEntity
 import com.example.mojadieta.data.local.entity.WaterEntity
+import com.example.mojadieta.data.local.entity.WeightEntryEntity
 
 @Database(
     entities = [
@@ -28,9 +30,10 @@ import com.example.mojadieta.data.local.entity.WaterEntity
         WaterEntity::class,
         NoteEntity::class,
         RecipeIngredientEntity::class,
-        CustomProductEntity::class
+        CustomProductEntity::class,
+        WeightEntryEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class DietDatabase : RoomDatabase() {
@@ -41,6 +44,7 @@ abstract class DietDatabase : RoomDatabase() {
     abstract fun waterDao(): WaterDao
     abstract fun noteDao(): NoteDao
     abstract fun customProductDao(): CustomProductDao
+    abstract fun weightDao(): WeightDao
 
     companion object {
         private const val DATABASE_NAME = "moja_dieta.db"
@@ -87,6 +91,35 @@ abstract class DietDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Wersja 2 → 3: porcje i zdjęcia we wpisach dziennika, zdjęcia przepisów,
+         * kody kreskowe własnych produktów, tabela pomiarów wagi.
+         */
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE meal_entries ADD COLUMN servings REAL NOT NULL DEFAULT 1")
+                db.execSQL("ALTER TABLE meal_entries ADD COLUMN imagePath TEXT")
+                db.execSQL("ALTER TABLE recipes ADD COLUMN imagePath TEXT")
+                db.execSQL("ALTER TABLE custom_products ADD COLUMN barcode TEXT")
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS weight_entries (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        date INTEGER NOT NULL,
+                        timeMillis INTEGER NOT NULL,
+                        weightKg REAL NOT NULL,
+                        source TEXT NOT NULL,
+                        externalId TEXT
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS index_weight_entries_externalId ON weight_entries (externalId)"
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_weight_entries_date ON weight_entries (date)")
+            }
+        }
+
         @Volatile
         private var instance: DietDatabase? = null
 
@@ -97,7 +130,7 @@ abstract class DietDatabase : RoomDatabase() {
                     DietDatabase::class.java,
                     DATABASE_NAME
                 )
-                    .addMigrations(MIGRATION_1_2)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                     .addCallback(PrepopulateCallback())
                     .build()
                     .also { instance = it }

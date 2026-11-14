@@ -14,7 +14,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.mojadieta.DietApplication
 import com.example.mojadieta.ui.AppViewModelProvider
+import com.example.mojadieta.ui.importer.ImportScreen
+import com.example.mojadieta.ui.profile.ProfileScreen
+import com.example.mojadieta.ui.weight.WeightScreen
 import com.example.mojadieta.ui.splash.SplashScreen
 import com.example.mojadieta.ui.update.AboutScreen
 import com.example.mojadieta.ui.update.UpdatePromptDialog
@@ -66,6 +70,9 @@ object Routes {
     const val PLANNER = "planner"
     const val NOTES = "notes"
     const val ABOUT = "about"
+    const val PROFILE = "profile"
+    const val WEIGHT = "weight"
+    const val IMPORT = "import"
 
     const val ARG_RECIPE_ID = "recipeId"
     const val ARG_NOTE_ID = "noteId"
@@ -122,6 +129,8 @@ private fun MainContent(openUpdatesRequest: Boolean, onOpenUpdatesHandled: () ->
             permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
         updateViewModel.checkOnStartup()
+        // Nowe pomiary wagi z Health Connect (jeśli jest połączony).
+        runCatching { (context.applicationContext as DietApplication).container.syncWeightsFromHealthConnect() }
     }
 
     // Po powrocie z ustawień „Instaluj nieznane aplikacje” wznawiamy instalację.
@@ -217,7 +226,29 @@ fun DietNavHost(
         modifier = modifier
     ) {
         composable(Routes.DIARY) {
-            DiaryScreen(onOpenAbout = { navController.navigate(Routes.ABOUT) })
+            DiaryScreen(
+                onOpenAbout = { navController.navigate(Routes.ABOUT) },
+                onOpenProfile = { navController.navigate(Routes.PROFILE) },
+                onOpenWeight = { navController.navigate(Routes.WEIGHT) }
+            )
+        }
+        composable(Routes.PROFILE) {
+            ProfileScreen(
+                onBack = { navController.popBackStack() },
+                onOpenWeight = { navController.navigate(Routes.WEIGHT) }
+            )
+        }
+        composable(Routes.WEIGHT) {
+            WeightScreen(onBack = { navController.popBackStack() })
+        }
+        composable(Routes.IMPORT) {
+            ImportScreen(
+                onBack = { navController.popBackStack() },
+                onOpenRecipe = { id ->
+                    navController.popBackStack()
+                    navController.navigate(Routes.recipeDetail(id))
+                }
+            )
         }
         composable(Routes.ABOUT) {
             AboutScreen(viewModel = updateViewModel, onBack = { navController.popBackStack() })
@@ -225,7 +256,8 @@ fun DietNavHost(
         composable(Routes.RECIPES) {
             RecipesScreen(
                 onRecipeClick = { navController.navigate(Routes.recipeDetail(it)) },
-                onAddRecipe = { navController.navigate(Routes.recipeEdit()) }
+                onAddRecipe = { navController.navigate(Routes.recipeEdit()) },
+                onImport = { navController.navigate(Routes.IMPORT) }
             )
         }
         composable(

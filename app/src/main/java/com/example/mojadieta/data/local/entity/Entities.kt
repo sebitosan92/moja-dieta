@@ -21,7 +21,9 @@ data class RecipeEntity(
     val instructions: String,
     // Kolumny dodane w wersji 2 bazy (migracja 1→2) – stąd wartości domyślne.
     @ColumnInfo(defaultValue = "1") val servings: Int = 1,
-    @ColumnInfo(defaultValue = "0") val autoNutrition: Boolean = false
+    @ColumnInfo(defaultValue = "0") val autoNutrition: Boolean = false,
+    // Wersja 3 bazy:
+    val imagePath: String? = null
 )
 
 /** Składnik przepisu z gramaturą i wartościami na 100 g (wersja 2 bazy). */
@@ -57,7 +59,23 @@ data class CustomProductEntity(
     val kcal: Double,
     val protein: Double,
     val carbs: Double,
-    val fat: Double
+    val fat: Double,
+    // Wersja 3 bazy: kod kreskowy zeskanowanego produktu
+    val barcode: String? = null
+)
+
+/** Pomiar wagi (wersja 3 bazy). externalId = id rekordu z Health Connect (do pomijania duplikatów). */
+@Entity(
+    tableName = "weight_entries",
+    indices = [Index(value = ["externalId"], unique = true), Index("date")]
+)
+data class WeightEntryEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val date: Long,
+    val timeMillis: Long,
+    val weightKg: Double,
+    val source: String,
+    val externalId: String?
 )
 
 /** Wpis posiłku w dzienniku. Data przechowywana jako epochDay (LocalDate.toEpochDay()). */
@@ -75,7 +93,10 @@ data class MealEntryEntity(
     val carbs: Double,
     val fat: Double,
     val recipeId: Long?,
-    val eaten: Boolean
+    val eaten: Boolean,
+    // Wersja 3 bazy:
+    @ColumnInfo(defaultValue = "1") val servings: Double = 1.0,
+    val imagePath: String? = null
 )
 
 @Entity(

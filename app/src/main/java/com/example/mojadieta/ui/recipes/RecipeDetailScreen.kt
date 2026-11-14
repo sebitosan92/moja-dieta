@@ -3,6 +3,10 @@ package com.example.mojadieta.ui.recipes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.ui.draw.clip
+import com.example.mojadieta.ui.components.PhotoAspect
+import com.example.mojadieta.ui.components.StoredPhoto
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -198,6 +202,16 @@ private fun RecipeDetailContent(
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        if (recipe.imagePath != null) {
+            StoredPhoto(
+                recipe.imagePath,
+                contentDescription = recipe.name,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(PhotoAspect.RECIPE)
+                    .clip(MaterialTheme.shapes.large)
+            )
+        }
         Column {
             Text(recipe.name, style = MaterialTheme.typography.headlineSmall)
             Spacer(Modifier.height(8.dp))

@@ -3,12 +3,14 @@ package com.example.mojadieta.data.mapper
 import com.example.mojadieta.data.local.entity.CustomProductEntity
 import com.example.mojadieta.data.local.entity.MealEntryEntity
 import com.example.mojadieta.data.local.entity.RecipeIngredientEntity
+import com.example.mojadieta.data.local.entity.WeightEntryEntity
 import com.example.mojadieta.data.local.entity.NoteEntity
 import com.example.mojadieta.data.local.entity.PlannedMealWithRecipe
 import com.example.mojadieta.data.local.entity.RecipeEntity
 import com.example.mojadieta.domain.model.FoodProduct
 import com.example.mojadieta.domain.model.MealEntry
 import com.example.mojadieta.domain.model.RecipeIngredient
+import com.example.mojadieta.domain.model.WeightEntry
 import com.example.mojadieta.domain.model.MealType
 import com.example.mojadieta.domain.model.Note
 import com.example.mojadieta.domain.model.PlannedMeal
@@ -27,7 +29,8 @@ fun RecipeEntity.toDomain() = Recipe(
     ingredients = ingredients,
     instructions = instructions,
     servings = servings,
-    autoNutrition = autoNutrition
+    autoNutrition = autoNutrition,
+    imagePath = imagePath
 )
 
 fun Recipe.toEntity() = RecipeEntity(
@@ -41,7 +44,8 @@ fun Recipe.toEntity() = RecipeEntity(
     ingredients = ingredients,
     instructions = instructions,
     servings = servings,
-    autoNutrition = autoNutrition
+    autoNutrition = autoNutrition,
+    imagePath = imagePath
 )
 
 fun RecipeIngredientEntity.toDomain() = RecipeIngredient(
@@ -72,7 +76,26 @@ fun CustomProductEntity.toDomain() = FoodProduct(
     protein = protein,
     carbs = carbs,
     fat = fat,
-    customId = id
+    customId = id,
+    barcode = barcode
+)
+
+fun WeightEntryEntity.toDomain() = WeightEntry(
+    id = id,
+    date = LocalDate.ofEpochDay(date),
+    timeMillis = timeMillis,
+    weightKg = weightKg,
+    source = source,
+    externalId = externalId
+)
+
+fun WeightEntry.toEntity() = WeightEntryEntity(
+    id = id,
+    date = date.toEpochDay(),
+    timeMillis = timeMillis,
+    weightKg = weightKg,
+    source = source,
+    externalId = externalId
 )
 
 fun MealEntryEntity.toDomain() = MealEntry(
@@ -85,7 +108,9 @@ fun MealEntryEntity.toDomain() = MealEntry(
     carbs = carbs,
     fat = fat,
     recipeId = recipeId,
-    isEaten = eaten
+    isEaten = eaten,
+    servings = servings,
+    imagePath = imagePath
 )
 
 fun MealEntry.toEntity() = MealEntryEntity(
@@ -98,7 +123,9 @@ fun MealEntry.toEntity() = MealEntryEntity(
     carbs = carbs,
     fat = fat,
     recipeId = recipeId,
-    eaten = isEaten
+    eaten = isEaten,
+    servings = servings,
+    imagePath = imagePath
 )
 
 fun PlannedMealWithRecipe.toDomainOrNull(): PlannedMeal? {

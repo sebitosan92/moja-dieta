@@ -10,6 +10,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Person
+import com.example.mojadieta.ui.recipes.IngredientPickerSheet
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
@@ -41,11 +43,18 @@ import java.time.LocalDate
 @Composable
 fun DiaryScreen(
     onOpenAbout: () -> Unit,
+    onOpenProfile: () -> Unit,
+    onOpenWeight: () -> Unit,
     viewModel: DiaryViewModel = viewModel(factory = AppViewModelProvider.Factory)
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var addMealFor by rememberSaveable { mutableStateOf<MealType?>(null) }
     var showDatePicker by rememberSaveable { mutableStateOf(false) }
+    var editEntryId by rememberSaveable { mutableStateOf<Long?>(null) }
+    // Okno wyboru produktu: pora posiłku + czy od razu włączyć skaner.
+    var productPickerFor by rememberSaveable { mutableStateOf<MealType?>(null) }
+    var productPickerScan by rememberSaveable { mutableStateOf(false) }
+    val products by viewModel.products.collectAsStateWithLifecycle()
 
     if (showDatePicker) {
         DateJumpDialog(
@@ -78,6 +87,9 @@ fun DiaryScreen(
                     }
                     IconButton(onClick = { showDatePicker = true }) {
                         Icon(Icons.Outlined.CalendarMonth, contentDescription = "Wybierz dzień z kalendarza")
+                    }
+                    IconButton(onClick = onOpenProfile) {
+                        Icon(Icons.Outlined.Person, contentDescription = "Mój profil i cele")
                     }
                     IconButton(onClick = onOpenAbout) {
                         Icon(Icons.Outlined.Info, contentDescription = "O aplikacji i aktualizacje")
@@ -114,7 +126,12 @@ fun DiaryScreen(
                 )
             }
             item(key = "summary") {
-                DaySummaryCard(eaten = state.eatenSummary, total = state.totalSummary)
+                DaySummaryCard(
+                    eaten = state.eatenSummary,
+                    total = state.totalSummary,
+                    goal = state.goal,
+                    onSetGoal = onOpenProfile
+                )
             }
             item(key = "water") {
                 WaterCard(
@@ -122,6 +139,9 @@ fun DiaryScreen(
                     onChange = viewModel::changeWater,
                     onSetGoal = viewModel::setWaterGoal
                 )
+            }
+            item(key = "weight") {
+                WeightCard(latest = state.latestWeight, onOpen = onOpenWeight)
             }
             item(key = "meals_header") {
                 Text(
@@ -136,6 +156,7 @@ fun DiaryScreen(
                     entries = state.mealsByType[mealType].orEmpty(),
                     onAddClick = { addMealFor = mealType },
                     onToggleEaten = viewModel::toggleEaten,
+                    onEntryClick = { editEntryId = it.id },
                     onDelete = viewModel::deleteMeal
                 )
             }
@@ -147,13 +168,46 @@ fun DiaryScreen(
             initialMealType = mealType,
             recipes = state.recipes,
             onDismiss = { addMealFor = null },
-            onRecipeSelected = { recipe, type ->
-                viewModel.addRecipeMeal(recipe, type)
+            onRecipeSelected = { recipe, type, servings ->
+                viewModel.addRecipeMeal(recipe, type, servings)
                 addMealFor = null
+            },
+            onOpenProductPicker = { type, scan ->
+                addMealFor = null
+                productPickerScan = scan
+                productPickerFor = type
             },
             onManualAdd = { name, type, kcal, protein, carbs, fat ->
                 viewModel.addManualMeal(name, type, kcal, protein, carbs, fat)
                 addMealFor = null
+            }
+        )
+    }
+
+    productPickerFor?.let { mealType ->
+        IngredientPickerSheet(
+            products = products,
+            lookup = viewModel.productLookup,
+            onDismiss = { productPickerFor = null },
+            onAdd = { product, grams ->
+                viewModel.addProductMeal(product, grams, mealType)
+                productPickerFor = null
+            },
+            title = "Dodaj produkt · ${mealType.label}",
+            confirmLabel = "Dodaj do dziennika",
+            startWithScanner = productPickerScan
+        )
+    }
+
+    val editedEntry = editEntryId?.let { id -> state.mealsByType.values.flatten().firstOrNull { it.id == id } }
+    if (editedEntry != null) {
+        EditMealEntrySheet(
+            entry = editedEntry,
+            imageStorage = viewModel.imageStorage,
+            onDismiss = { editEntryId = null },
+            onSave = { servings, mealType, imagePath ->
+                viewModel.updateEntry(editedEntry, servings, mealType, imagePath)
+                editEntryId = null
             }
         )
     }

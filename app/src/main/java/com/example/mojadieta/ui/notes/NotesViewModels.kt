@@ -54,8 +54,12 @@ data class NoteEditState(
     val content: String = "",
     val createdAt: Long? = null,
     val updatedAt: Long? = null,
-    val error: String? = null
-)
+    val error: String? = null,
+    val savedTitle: String = "",
+    val savedContent: String = ""
+) {
+    val isDirty: Boolean get() = !isLoading && (title != savedTitle || content != savedContent)
+}
 
 class NoteEditViewModel(
     savedStateHandle: SavedStateHandle,
@@ -80,7 +84,9 @@ class NoteEditViewModel(
                             title = note.title,
                             content = note.content,
                             createdAt = note.createdAt,
-                            updatedAt = note.updatedAt
+                            updatedAt = note.updatedAt,
+                            savedTitle = note.title,
+                            savedContent = note.content
                         )
                     }
                 }

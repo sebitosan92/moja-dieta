@@ -64,3 +64,16 @@ fun LocalDate.toUtcMillis(): Long = atStartOfDay(ZoneOffset.UTC).toInstant().toE
 
 fun utcMillisToLocalDate(millis: Long): LocalDate =
     Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate()
+
+/** „1 porcja”, „2 porcje”, „5 porcji”, „1,5 porcji”. */
+fun formatServings(servings: Double): String {
+    val text = formatGrams(servings)
+    if (servings % 1.0 != 0.0) return "$text porcji"
+    val n = servings.toLong()
+    val word = when {
+        n == 1L -> "porcja"
+        n % 10 in 2..4 && n % 100 !in 12..14 -> "porcje"
+        else -> "porcji"
+    }
+    return "$text $word"
+}

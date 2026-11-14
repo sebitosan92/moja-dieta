@@ -1,6 +1,8 @@
 package com.example.mojadieta.ui.notes
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
+import com.example.mojadieta.ui.components.UnsavedChangesDialog
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.consumeWindowInsets
@@ -48,13 +50,30 @@ fun NoteEditScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showDeleteDialog by rememberSaveable { mutableStateOf(false) }
+    var showUnsavedDialog by rememberSaveable { mutableStateOf(false) }
+
+    BackHandler(enabled = state.isDirty) { showUnsavedDialog = true }
+
+    if (showUnsavedDialog) {
+        UnsavedChangesDialog(
+            onSave = {
+                showUnsavedDialog = false
+                viewModel.save(onSaved = onBack)
+            },
+            onDiscard = {
+                showUnsavedDialog = false
+                onBack()
+            },
+            onDismiss = { showUnsavedDialog = false }
+        )
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(if (state.isEditing) "Edytuj notatkę" else "Nowa notatka") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = { if (state.isDirty) showUnsavedDialog = true else onBack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Wstecz")
                     }
                 },

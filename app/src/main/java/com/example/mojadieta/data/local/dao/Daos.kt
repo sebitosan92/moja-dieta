@@ -14,6 +14,7 @@ import com.example.mojadieta.data.local.entity.PlannedMealEntity
 import com.example.mojadieta.data.local.entity.PlannedMealWithRecipe
 import com.example.mojadieta.data.local.entity.RecipeEntity
 import com.example.mojadieta.data.local.entity.WaterEntity
+import com.example.mojadieta.data.local.entity.WeightEntryEntity
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -35,6 +36,9 @@ abstract class RecipeDao {
 
     @Query("DELETE FROM recipes WHERE id = :id")
     abstract suspend fun deleteById(id: Long)
+
+    @Query("SELECT imagePath FROM recipes WHERE imagePath IS NOT NULL")
+    abstract suspend fun imagePaths(): List<String>
 
     // --- Składniki przepisu ---
 
@@ -75,6 +79,9 @@ interface CustomProductDao {
 
     @Query("DELETE FROM custom_products WHERE id = :id")
     suspend fun deleteById(id: Long)
+
+    @Query("SELECT * FROM custom_products WHERE barcode = :barcode LIMIT 1")
+    suspend fun findByBarcode(barcode: String): CustomProductEntity?
 }
 
 @Dao
@@ -95,6 +102,27 @@ interface MealEntryDao {
     suspend fun setEaten(id: Long, eaten: Boolean)
 
     @Query("DELETE FROM meal_entries WHERE id = :id")
+    suspend fun deleteById(id: Long)
+
+    @Update
+    suspend fun update(entry: MealEntryEntity)
+
+    @Query("SELECT imagePath FROM meal_entries WHERE imagePath IS NOT NULL")
+    suspend fun imagePaths(): List<String>
+}
+
+@Dao
+interface WeightDao {
+    @Query("SELECT * FROM weight_entries ORDER BY timeMillis DESC")
+    fun observeAll(): Flow<List<WeightEntryEntity>>
+
+    @Query("SELECT * FROM weight_entries ORDER BY timeMillis DESC LIMIT 1")
+    fun observeLatest(): Flow<WeightEntryEntity?>
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insert(entry: WeightEntryEntity): Long
+
+    @Query("DELETE FROM weight_entries WHERE id = :id")
     suspend fun deleteById(id: Long)
 }
 

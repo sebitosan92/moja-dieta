@@ -15,6 +15,9 @@ import com.example.mojadieta.ui.recipes.RecipeDetailViewModel
 import com.example.mojadieta.ui.recipes.RecipeEditViewModel
 import com.example.mojadieta.ui.recipes.RecipesViewModel
 import com.example.mojadieta.ui.update.UpdateViewModel
+import com.example.mojadieta.ui.importer.ImportViewModel
+import com.example.mojadieta.ui.profile.ProfileViewModel
+import com.example.mojadieta.ui.weight.WeightViewModel
 
 /** Fabryka wszystkich ViewModeli aplikacji – zależności pochodzą z [AppContainer]. */
 object AppViewModelProvider {
@@ -25,8 +28,14 @@ object AppViewModelProvider {
                 diaryRepository = c.diaryRepository,
                 waterRepository = c.waterRepository,
                 recipeRepository = c.recipeRepository,
+                productRepository = c.productRepository,
+                profileRepository = c.profileRepository,
+                weightRepository = c.weightRepository,
                 addRecipeToDiary = c.addRecipeToDiary,
-                calculateNutritionSummary = c.calculateNutritionSummary
+                calculateNutritionSummary = c.calculateNutritionSummary,
+                calculateDailyGoal = c.calculateDailyGoal,
+                productLookup = c.productLookup,
+                imageStorage = c.imageStorage
             )
         }
         initializer {
@@ -47,7 +56,9 @@ object AppViewModelProvider {
                 savedStateHandle = createSavedStateHandle(),
                 recipeRepository = c.recipeRepository,
                 productRepository = c.productRepository,
-                calculateRecipeNutrition = c.calculateRecipeNutrition
+                calculateRecipeNutrition = c.calculateRecipeNutrition,
+                productLookup = c.productLookup,
+                imageStorage = c.imageStorage
             )
         }
         initializer {
@@ -63,6 +74,18 @@ object AppViewModelProvider {
         }
         initializer {
             NoteEditViewModel(createSavedStateHandle(), container().noteRepository)
+        }
+        initializer {
+            val c = container()
+            ProfileViewModel(c.profileRepository, c.weightRepository, c.calculateDailyGoal)
+        }
+        initializer {
+            val c = container()
+            WeightViewModel(c.weightRepository, c.healthConnect, c)
+        }
+        initializer {
+            val c = container()
+            ImportViewModel(c.recipeRepository, c.plannerRepository, c.productRepository, c.calculateRecipeNutrition, c.textExtractor)
         }
         initializer {
             val c = container()

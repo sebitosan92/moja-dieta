@@ -1,6 +1,22 @@
 package com.example.mojadieta.ui.diary
 
 import androidx.compose.foundation.layout.Arrangement
+import com.example.mojadieta.ui.util.formatGrams
+import com.example.mojadieta.ui.components.MacroInlineRow
+import androidx.compose.ui.Alignment
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.QrCodeScanner
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -37,7 +53,7 @@ import com.example.mojadieta.ui.components.RecipePickerList
 import com.example.mojadieta.ui.util.parseDecimal
 
 /**
- * Arkusz dodawania posiłku: wybór gotowego przepisu z bazy lub szybki wpis ręczny.
+ * Arkusz dodawania posiłku: przepis (z liczbą porcji), produkt z bazy/skanu albo wpis ręczny.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -45,12 +61,15 @@ fun AddMealSheet(
     initialMealType: MealType,
     recipes: List<Recipe>,
     onDismiss: () -> Unit,
-    onRecipeSelected: (Recipe, MealType) -> Unit,
+    onRecipeSelected: (Recipe, MealType, Double) -> Unit,
+    onOpenProductPicker: (mealType: MealType, scan: Boolean) -> Unit,
     onManualAdd: (name: String, mealType: MealType, calories: Int, protein: Double, carbs: Double, fat: Double) -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var mealType by rememberSaveable { mutableStateOf(initialMealType) }
     var tab by rememberSaveable { mutableIntStateOf(0) }
+    var selectedRecipeId by rememberSaveable { mutableStateOf<Long?>(null) }
+    val selectedRecipe = recipes.firstOrNull { it.id == selectedRecipeId }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(
@@ -58,6 +77,14 @@ fun AddMealSheet(
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp)
         ) {
+            if (selectedRecipe != null) {
+                PortionStep(
+                    recipe = selectedRecipe,
+                    mealType = mealType,
+                    onBack = { selectedRecipeId = null },
+                    onConfirm = { servings -> onRecipeSelected(selectedRecipe, mealType, servings) }
+                )
+            } else {
             Text("Dodaj posiłek", style = MaterialTheme.typography.titleLarge)
             Spacer(Modifier.height(12.dp))
             Text("Pora posiłku", style = MaterialTheme.typography.labelLarge)
@@ -65,21 +92,124 @@ fun AddMealSheet(
             MealTypeChips(selected = mealType, onSelect = { mealType = it })
             Spacer(Modifier.height(12.dp))
             SecondaryTabRow(selectedTabIndex = tab) {
-                Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Z przepisów") })
-                Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Wpisz ręcznie") })
+                Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Przepis") })
+                Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Produkt") })
+                Tab(selected = tab == 2, onClick = { tab = 2 }, text = { Text("Ręcznie") })
             }
             Spacer(Modifier.height(12.dp))
-            if (tab == 0) {
-                RecipePickerList(
-                    recipes = recipes,
-                    onRecipeClick = { onRecipeSelected(it, mealType) }
-                )
-                Spacer(Modifier.height(16.dp))
-            } else {
-                ManualMealForm(onSubmit = { name, kcal, p, c, f -> onManualAdd(name, mealType, kcal, p, c, f) })
+            when (tab) {
+                0 -> {
+                    RecipePickerList(
+                        recipes = recipes,
+                        onRecipeClick = { selectedRecipeId = it.id }
+                    )
+                    Spacer(Modifier.height(16.dp))
+                }
+
+                1 -> {
+                    Text(
+                        "Dodaj pojedynczy produkt z gramaturą – z bazy, ze skanu kodu kreskowego albo z internetu.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Button(onClick = { onOpenProductPicker(mealType, false) }, modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Outlined.Search, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Wyszukaj produkt")
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(onClick = { onOpenProductPicker(mealType, true) }, modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Outlined.QrCodeScanner, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Skanuj kod kreskowy")
+                    }
+                    Spacer(Modifier.height(24.dp))
+                }
+
+                else -> ManualMealForm(onSubmit = { name, kcal, p, c, f -> onManualAdd(name, mealType, kcal, p, c, f) })
+            }
             }
         }
     }
+}
+
+/** Wybór liczby porcji przepisu przed dodaniem do dziennika. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun PortionStep(
+    recipe: Recipe,
+    mealType: MealType,
+    onBack: () -> Unit,
+    onConfirm: (Double) -> Unit
+) {
+    var servingsText by rememberSaveable(recipe.id) { mutableStateOf("1") }
+    val servings = parseDecimal(servingsText)?.takeIf { it > 0 && it <= 20 }
+
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        IconButton(onClick = onBack) {
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Wróć do listy przepisów")
+        }
+        Column {
+            Text(recipe.name, style = MaterialTheme.typography.titleLarge)
+            Text(
+                "${mealType.label} · 1 porcja = ${recipe.calories} kcal",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+    Spacer(Modifier.height(16.dp))
+    Text("Ile porcji?", style = MaterialTheme.typography.labelLarge)
+    Spacer(Modifier.height(6.dp))
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        listOf(0.5, 1.0, 1.5, 2.0, 3.0).forEach { value ->
+            FilterChip(
+                selected = servings == value,
+                onClick = { servingsText = formatGrams(value) },
+                label = { Text(if (value == 0.5) "½" else if (value == 1.5) "1½" else formatGrams(value)) }
+            )
+        }
+    }
+    Spacer(Modifier.height(8.dp))
+    OutlinedTextField(
+        value = servingsText,
+        onValueChange = { input -> servingsText = input.filter { it.isDigit() || it == ',' || it == '.' }.take(5) },
+        label = { Text("Liczba porcji") },
+        singleLine = true,
+        isError = servings == null,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+        modifier = Modifier.fillMaxWidth()
+    )
+    Spacer(Modifier.height(12.dp))
+    if (servings != null) {
+        Card(
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+            shape = MaterialTheme.shapes.medium
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "${Math.round(recipe.calories * servings)} kcal",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(Modifier.width(14.dp))
+                MacroInlineRow(recipe.protein * servings, recipe.carbs * servings, recipe.fat * servings)
+            }
+        }
+    }
+    Spacer(Modifier.height(16.dp))
+    Button(
+        onClick = { servings?.let(onConfirm) },
+        enabled = servings != null,
+        modifier = Modifier.fillMaxWidth()
+    ) { Text("Dodaj do dziennika") }
+    Spacer(Modifier.height(16.dp))
 }
 
 @Composable

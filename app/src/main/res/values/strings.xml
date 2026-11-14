@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Moja Dieta</string>
+    <string name="widget_name">Moja Dieta – woda i kalorie</string>
+    <string name="widget_description">Kalorie z dzisiejszego dnia i szybkie dodawanie wody</string>
 </resources>

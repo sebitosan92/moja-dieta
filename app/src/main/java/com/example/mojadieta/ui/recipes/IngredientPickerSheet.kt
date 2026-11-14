@@ -1,6 +1,16 @@
 package com.example.mojadieta.ui.recipes
 
 import androidx.compose.foundation.clickable
+import kotlinx.coroutines.launch
+import com.example.mojadieta.ui.components.BarcodeScannerDialog
+import com.example.mojadieta.data.food.ProductLookup
+import com.example.mojadieta.data.food.BarcodeResult
+import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material.icons.outlined.QrCodeScanner
+import androidx.compose.material.icons.outlined.Language
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -65,21 +75,46 @@ import com.example.mojadieta.ui.util.parseDecimal
 private sealed interface PickerStep {
     data object Search : PickerStep
     data class Amount(val product: FoodProduct) : PickerStep
-    data object Custom : PickerStep
+    data class Custom(val barcode: String? = null, val message: String? = null) : PickerStep
+    data class Loading(val message: String) : PickerStep
+    data class Online(val query: String) : PickerStep
 }
 
-/** Arkusz dodawania składnika: wyszukiwarka → ilość, albo własny produkt. */
+/**
+ * Arkusz wyboru produktu: wyszukiwarka (baza wbudowana + moje produkty), skaner kodów,
+ * wyszukiwanie w Open Food Facts i własny produkt → wybór ilości.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun IngredientPickerSheet(
     products: List<FoodProduct>,
+    lookup: ProductLookup,
     onDismiss: () -> Unit,
     onAdd: (FoodProduct, Double) -> Unit,
-    onSaveCustomProduct: (FoodProduct, (FoodProduct) -> Unit) -> Unit
+    title: String = "Dodaj składnik",
+    confirmLabel: String = "Dodaj składnik",
+    startWithScanner: Boolean = false
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val scope = rememberCoroutineScope()
     var step by remember { mutableStateOf<PickerStep>(PickerStep.Search) }
     var query by rememberSaveable { mutableStateOf("") }
+    var showScanner by rememberSaveable { mutableStateOf(startWithScanner) }
+
+    fun handleBarcode(code: String) {
+        step = PickerStep.Loading("Szukam produktu o kodzie $code…")
+        scope.launch {
+            step = when (val result = lookup.findByBarcode(code)) {
+                is BarcodeResult.Found -> PickerStep.Amount(result.product)
+                is BarcodeResult.NotFound -> PickerStep.Custom(
+                    barcode = code,
+                    message = "Nie znaleziono produktu o kodzie $code w bazie Open Food Facts. " +
+                        "Przepisz wartości z etykiety – zapamiętam go na kolejne skany."
+                )
+                is BarcodeResult.Error -> PickerStep.Custom(barcode = code, message = result.message)
+            }
+        }
+    }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(
@@ -90,38 +125,76 @@ fun IngredientPickerSheet(
         ) {
             when (val current = step) {
                 PickerStep.Search -> ProductSearch(
+                    title = title,
                     products = products,
                     query = query,
                     onQueryChange = { query = it },
                     onProductClick = { step = PickerStep.Amount(it) },
-                    onAddCustom = { step = PickerStep.Custom }
+                    onAddCustom = { step = PickerStep.Custom() },
+                    onScan = { showScanner = true },
+                    onSearchOnline = { step = PickerStep.Online(query.trim()) }
                 )
 
                 is PickerStep.Amount -> AmountStep(
                     product = current.product,
+                    confirmLabel = confirmLabel,
                     onBack = { step = PickerStep.Search },
                     onConfirm = { grams -> onAdd(current.product, grams) }
                 )
 
-                PickerStep.Custom -> CustomProductStep(
-                    initialName = query,
+                is PickerStep.Custom -> CustomProductStep(
+                    initialName = if (current.barcode == null) query else "",
+                    barcode = current.barcode,
+                    message = current.message,
                     onBack = { step = PickerStep.Search },
                     onSave = { product ->
-                        onSaveCustomProduct(product) { saved -> step = PickerStep.Amount(saved) }
+                        scope.launch { step = PickerStep.Amount(lookup.save(product)) }
+                    }
+                )
+
+                is PickerStep.Loading -> Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(vertical = 32.dp)
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                    Spacer(Modifier.width(16.dp))
+                    Text(current.message, style = MaterialTheme.typography.bodyLarge)
+                }
+
+                is PickerStep.Online -> OnlineSearchStep(
+                    query = current.query,
+                    lookup = lookup,
+                    onBack = { step = PickerStep.Search },
+                    onPick = { product ->
+                        step = PickerStep.Loading("Zapisuję produkt…")
+                        scope.launch { step = PickerStep.Amount(lookup.save(product)) }
                     }
                 )
             }
         }
     }
+
+    if (showScanner) {
+        BarcodeScannerDialog(
+            onDismiss = { showScanner = false },
+            onResult = { code ->
+                showScanner = false
+                handleBarcode(code)
+            }
+        )
+    }
 }
 
 @Composable
 private fun ProductSearch(
+    title: String,
     products: List<FoodProduct>,
     query: String,
     onQueryChange: (String) -> Unit,
     onProductClick: (FoodProduct) -> Unit,
-    onAddCustom: () -> Unit
+    onAddCustom: () -> Unit,
+    onScan: () -> Unit,
+    onSearchOnline: () -> Unit
 ) {
     val filtered = remember(products, query) {
         val q = FoodCatalog.normalize(query)
@@ -134,7 +207,7 @@ private fun ProductSearch(
             )
     }
 
-    Text("Dodaj składnik", style = MaterialTheme.typography.titleLarge)
+    Text(title, style = MaterialTheme.typography.titleLarge)
     Spacer(Modifier.height(12.dp))
     OutlinedTextField(
         value = query,
@@ -153,55 +226,133 @@ private fun ProductSearch(
         shape = MaterialTheme.shapes.medium
     )
     Spacer(Modifier.height(8.dp))
-    OutlinedButton(onClick = onAddCustom, modifier = Modifier.fillMaxWidth()) {
-        Icon(Icons.Outlined.Add, contentDescription = null)
-        Spacer(Modifier.width(8.dp))
-        Text("Własny produkt (z etykiety)")
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedButton(onClick = onScan, modifier = Modifier.weight(1f)) {
+            Icon(Icons.Outlined.QrCodeScanner, contentDescription = null)
+            Spacer(Modifier.width(6.dp))
+            Text("Skanuj kod")
+        }
+        OutlinedButton(onClick = onAddCustom, modifier = Modifier.weight(1f)) {
+            Icon(Icons.Outlined.Add, contentDescription = null)
+            Spacer(Modifier.width(6.dp))
+            Text("Własny")
+        }
     }
-    Spacer(Modifier.height(8.dp))
+    if (query.trim().length >= 3) {
+        TextButton(onClick = onSearchOnline, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Outlined.Language, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("Szukaj „${query.trim()}” w internecie (Open Food Facts)")
+        }
+    }
+    Spacer(Modifier.height(4.dp))
     if (filtered.isEmpty()) {
         Text(
-            "Brak produktu w bazie. Dodaj go jako własny produkt – wartości znajdziesz na etykiecie.",
+            "Brak produktu w bazie. Zeskanuj kod, poszukaj w internecie albo dodaj go jako własny produkt.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(vertical = 16.dp)
         )
     } else {
-        LazyColumn(modifier = Modifier.heightIn(max = 420.dp)) {
+        LazyColumn(modifier = Modifier.heightIn(max = 400.dp)) {
             items(filtered, key = { (it.customId?.let { id -> "c$id" } ?: "b") + it.name }) { product ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onProductClick(product) }
-                        .padding(horizontal = 4.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                product.name,
-                                style = MaterialTheme.typography.titleSmall,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f, fill = false)
-                            )
-                            if (product.isCustom) {
-                                Spacer(Modifier.width(6.dp))
-                                Text(
-                                    "MÓJ",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.tertiary
-                                )
-                            }
-                        }
-                        MacroInlineRow(product.protein, product.carbs, product.fat)
-                    }
+                ProductRow(product = product, onClick = { onProductClick(product) })
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProductRow(product: FoodProduct, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 4.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    product.name,
+                    style = MaterialTheme.typography.titleSmall,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                if (product.isCustom) {
+                    Spacer(Modifier.width(6.dp))
                     Text(
-                        "${product.kcal.toInt()} kcal\n/100 g",
+                        "MÓJ",
                         style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary
+                        color = MaterialTheme.colorScheme.tertiary
                     )
                 }
+            }
+            MacroInlineRow(product.protein, product.carbs, product.fat)
+        }
+        Text(
+            "${product.kcal.toInt()} kcal\n/100 g",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.primary
+        )
+    }
+}
+
+@Composable
+private fun OnlineSearchStep(
+    query: String,
+    lookup: ProductLookup,
+    onBack: () -> Unit,
+    onPick: (FoodProduct) -> Unit
+) {
+    var results by remember(query) { mutableStateOf<List<FoodProduct>?>(null) }
+    var error by remember(query) { mutableStateOf<String?>(null) }
+    LaunchedEffect(query) {
+        try {
+            results = lookup.searchOnline(query)
+        } catch (e: Exception) {
+            error = "Nie udało się połączyć z Open Food Facts. Sprawdź internet i spróbuj ponownie."
+        }
+    }
+
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        IconButton(onClick = onBack) {
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Wróć")
+        }
+        Column {
+            Text("Wyniki z internetu", style = MaterialTheme.typography.titleLarge)
+            Text(
+                "„$query” · baza Open Food Facts",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+    Spacer(Modifier.height(8.dp))
+    val list = results
+    when {
+        error != null -> Text(
+            error.orEmpty(),
+            color = MaterialTheme.colorScheme.error,
+            modifier = Modifier.padding(vertical = 24.dp)
+        )
+        list == null -> Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(vertical = 24.dp)
+        ) {
+            CircularProgressIndicator(modifier = Modifier.size(24.dp))
+            Spacer(Modifier.width(12.dp))
+            Text("Szukam… (to może potrwać kilka sekund)")
+        }
+        list.isEmpty() -> Text(
+            "Nic nie znaleziono. Spróbuj innej nazwy albo dodaj produkt jako własny.",
+            modifier = Modifier.padding(vertical = 24.dp)
+        )
+        else -> LazyColumn(modifier = Modifier.heightIn(max = 420.dp)) {
+            items(list, key = { (it.barcode ?: "") + it.name }) { product ->
+                ProductRow(product = product, onClick = { onPick(product) })
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             }
         }
@@ -212,6 +363,7 @@ private fun ProductSearch(
 @Composable
 private fun AmountStep(
     product: FoodProduct,
+    confirmLabel: String,
     onBack: () -> Unit,
     onConfirm: (Double) -> Unit
 ) {
@@ -293,12 +445,14 @@ private fun AmountStep(
         onClick = { grams?.let(onConfirm) },
         enabled = grams != null && grams > 0.0,
         modifier = Modifier.fillMaxWidth()
-    ) { Text("Dodaj składnik") }
+    ) { Text(confirmLabel) }
 }
 
 @Composable
 private fun CustomProductStep(
     initialName: String,
+    barcode: String?,
+    message: String?,
     onBack: () -> Unit,
     onSave: (FoodProduct) -> Unit
 ) {
@@ -327,6 +481,23 @@ private fun CustomProductStep(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(start = 12.dp, bottom = 12.dp)
         )
+        if (message != null) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+                shape = MaterialTheme.shapes.medium,
+                modifier = Modifier.padding(bottom = 12.dp)
+            ) {
+                Text(message, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(12.dp))
+            }
+        }
+        if (barcode != null) {
+            Text(
+                "Kod kreskowy: $barcode",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.secondary,
+                modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
+            )
+        }
         OutlinedTextField(
             value = name,
             onValueChange = { name = it },
@@ -356,7 +527,7 @@ private fun CustomProductStep(
                 if (name.isNotBlank() && kcalValue != null && proteinValue != null &&
                     carbsValue != null && fatValue != null
                 ) {
-                    onSave(FoodProduct(name.trim(), kcalValue, proteinValue, carbsValue, fatValue))
+                    onSave(FoodProduct(name.trim(), kcalValue, proteinValue, carbsValue, fatValue, barcode = barcode))
                 }
             },
             modifier = Modifier.fillMaxWidth()
@@ -384,6 +555,17 @@ private fun unitLabel(unit: String, count: Int): String {
         "różyczka" -> "różyczki"
         "łodyga" -> "łodygi"
         "miarka" -> "miarki"
+        "butelka" -> "butelki"
+        "filiżanka" -> "filiżanki"
+        "gałka" -> "gałki"
+        "kawałek" -> "kawałki"
+        "kieliszek" -> "kieliszki"
+        "miska" -> "miski"
+        "porcja" -> "porcje"
+        "saszetka" -> "saszetki"
+        "słoik" -> "słoiki"
+        "talerz" -> "talerze"
+        "trójkącik" -> "trójkąciki"
         else -> unit // skróty: „szt.”, „opak.”
     }
 }

@@ -42,7 +42,9 @@ data class Recipe(
     /** Na ile porcji jest przepis – wartości odżywcze są podawane na 1 porcję. */
     val servings: Int = 1,
     /** true = kalorie i makro wyliczane automatycznie ze składników z gramaturą. */
-    val autoNutrition: Boolean = false
+    val autoNutrition: Boolean = false,
+    /** Ścieżka do zdjęcia w pamięci aplikacji. */
+    val imagePath: String? = null
 ) {
     val ingredientList: List<String>
         get() = ingredients.lines().map { it.trim().removePrefix("-").trim() }.filter { it.isNotBlank() }
@@ -61,7 +63,10 @@ data class MealEntry(
     val carbs: Double,
     val fat: Double,
     val recipeId: Long? = null,
-    val isEaten: Boolean = false
+    val isEaten: Boolean = false,
+    /** Liczba porcji – kalorie i makro wpisu są już przemnożone przez tę wartość. */
+    val servings: Double = 1.0,
+    val imagePath: String? = null
 )
 
 data class PlannedMeal(
@@ -104,7 +109,8 @@ data class FoodProduct(
     val fat: Double,
     val unitName: String? = null,
     val unitGrams: Double? = null,
-    val customId: Long? = null
+    val customId: Long? = null,
+    val barcode: String? = null
 ) {
     val isCustom: Boolean get() = customId != null
 }
@@ -141,4 +147,62 @@ data class NutritionSummary(
     val protein: Double = 0.0,
     val carbs: Double = 0.0,
     val fat: Double = 0.0
+)
+
+/** Pomiar wagi – wpisany ręcznie albo zaimportowany z Health Connect. */
+data class WeightEntry(
+    val id: Long = 0,
+    val date: LocalDate,
+    val timeMillis: Long,
+    val weightKg: Double,
+    /** "manual" albo nazwa pakietu aplikacji źródłowej z Health Connect. */
+    val source: String,
+    val externalId: String? = null
+) {
+    val isManual: Boolean get() = source == SOURCE_MANUAL
+
+    companion object {
+        const val SOURCE_MANUAL = "manual"
+    }
+}
+
+enum class Sex(val label: String) { FEMALE("Kobieta"), MALE("Mężczyzna") }
+
+enum class ActivityLevel(val label: String, val description: String, val factor: Double) {
+    SEDENTARY("Bardzo niska", "Praca siedząca, brak treningów", 1.2),
+    LIGHT("Niska", "Lekkie ćwiczenia 1–3 razy w tygodniu", 1.375),
+    MODERATE("Umiarkowana", "Treningi 3–5 razy w tygodniu", 1.55),
+    HIGH("Wysoka", "Intensywne treningi 6–7 razy w tygodniu", 1.725),
+    VERY_HIGH("Bardzo wysoka", "Praca fizyczna i codzienne treningi", 1.9)
+}
+
+enum class GoalType(val label: String, val kcalModifier: Double, val proteinPerKg: Double) {
+    LOSE("Redukcja", -0.20, 2.0),
+    LOSE_SLOW("Łagodna redukcja", -0.10, 1.8),
+    MAINTAIN("Utrzymanie wagi", 0.0, 1.6),
+    GAIN("Budowa masy", 0.10, 1.8)
+}
+
+/** Profil użytkownika do obliczenia zapotrzebowania. */
+data class UserProfile(
+    val sex: Sex = Sex.FEMALE,
+    val age: Int = 30,
+    val heightCm: Int = 165,
+    val weightKg: Double = 65.0,
+    val activity: ActivityLevel = ActivityLevel.LIGHT,
+    val goal: GoalType = GoalType.MAINTAIN,
+    /** true = cele wpisane ręcznie zamiast wyliczonych. */
+    val manualGoals: Boolean = false,
+    val manualCalories: Int = 2000,
+    val manualProtein: Int = 100,
+    val manualCarbs: Int = 250,
+    val manualFat: Int = 65
+)
+
+/** Dzienny cel: kalorie i makroskładniki w gramach. */
+data class DailyGoal(
+    val calories: Int,
+    val protein: Int,
+    val carbs: Int,
+    val fat: Int
 )

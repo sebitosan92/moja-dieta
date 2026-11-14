@@ -1,6 +1,9 @@
 package com.example.mojadieta.domain.usecase
 
+import com.example.mojadieta.domain.model.DailyGoal
 import com.example.mojadieta.domain.model.MealEntry
+import com.example.mojadieta.domain.model.Sex
+import com.example.mojadieta.domain.model.UserProfile
 import com.example.mojadieta.domain.model.MealType
 import com.example.mojadieta.domain.model.NutritionSummary
 import com.example.mojadieta.domain.model.Recipe
@@ -55,14 +58,59 @@ class CalculateRecipeNutritionUseCase {
     private fun round1(value: Double): Double = Math.round(value * 10.0) / 10.0
 }
 
+/** Zmienia liczbę porcji wpisu, przeliczając kalorie i makro proporcjonalnie. */
+fun MealEntry.scaledTo(newServings: Double): MealEntry {
+    val factor = newServings / servings.coerceAtLeast(0.01)
+    return copy(
+        servings = newServings,
+        calories = Math.round(calories * factor).toInt(),
+        protein = Math.round(protein * factor * 10.0) / 10.0,
+        carbs = Math.round(carbs * factor * 10.0) / 10.0,
+        fat = Math.round(fat * factor * 10.0) / 10.0
+    )
+}
+
+/**
+ * Dzienne zapotrzebowanie: BMR wzorem Mifflina-St Jeora × aktywność, skorygowane o cel.
+ * Białko w g/kg masy ciała, tłuszcze ~27% kalorii, reszta to węglowodany.
+ */
+class CalculateDailyGoalUseCase {
+    data class Result(val bmr: Int, val tdee: Int, val goal: DailyGoal)
+
+    operator fun invoke(profile: UserProfile): Result {
+        val base = 10 * profile.weightKg + 6.25 * profile.heightCm - 5 * profile.age
+        val bmr = if (profile.sex == Sex.MALE) base + 5 else base - 161
+        val tdee = bmr * profile.activity.factor
+        val calculated = run {
+            val kcal = (tdee * (1 + profile.goal.kcalModifier)).coerceAtLeast(1000.0)
+            val protein = profile.weightKg * profile.goal.proteinPerKg
+            val fat = kcal * 0.27 / 9.0
+            val carbs = ((kcal - protein * 4 - fat * 9) / 4.0).coerceAtLeast(0.0)
+            DailyGoal(
+                calories = (Math.round(kcal / 10.0) * 10).toInt(),
+                protein = Math.round(protein).toInt(),
+                carbs = Math.round(carbs).toInt(),
+                fat = Math.round(fat).toInt()
+            )
+        }
+        val goal = if (profile.manualGoals) {
+            DailyGoal(profile.manualCalories, profile.manualProtein, profile.manualCarbs, profile.manualFat)
+        } else {
+            calculated
+        }
+        return Result(Math.round(bmr).toInt(), Math.round(tdee).toInt(), goal)
+    }
+}
+
 /** Dodaje przepis jako wpis w dzienniku wybranego dnia. */
 class AddRecipeToDiaryUseCase(private val diaryRepository: DiaryRepository) {
     suspend operator fun invoke(
         recipe: Recipe,
         date: LocalDate,
         mealType: MealType,
-        eaten: Boolean = false
-    ): Long = diaryRepository.addMeal(recipe.toMealEntry(date, mealType, eaten))
+        eaten: Boolean = false,
+        servings: Double = 1.0
+    ): Long = diaryRepository.addMeal(recipe.toMealEntry(date, mealType, eaten).scaledTo(servings))
 }
 
 /**

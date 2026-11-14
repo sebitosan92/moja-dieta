@@ -2,4 +2,6 @@
 <paths>
     <!-- Pobrane pliki aktualizacji (cacheDir/updates) udostępniane systemowemu instalatorowi. -->
     <cache-path name="updates" path="updates/" />
+    <!-- Tymczasowe zdjęcia z aparatu (cacheDir/photos). -->
+    <cache-path name="photos" path="photos/" />
 </paths>

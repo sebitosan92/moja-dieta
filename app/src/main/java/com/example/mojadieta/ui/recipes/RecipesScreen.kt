@@ -22,6 +22,10 @@ import androidx.compose.material.icons.outlined.LocalFireDepartment
 import androidx.compose.material.icons.outlined.Restaurant
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Card
+import androidx.compose.material3.TextButton
+import androidx.compose.material.icons.outlined.FileDownload
+import androidx.compose.ui.draw.clip
+import com.example.mojadieta.ui.components.StoredPhoto
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -55,6 +59,7 @@ import com.example.mojadieta.ui.components.MacroInlineRow
 fun RecipesScreen(
     onRecipeClick: (Long) -> Unit,
     onAddRecipe: () -> Unit,
+    onImport: () -> Unit,
     viewModel: RecipesViewModel = viewModel(factory = AppViewModelProvider.Factory)
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -63,6 +68,13 @@ fun RecipesScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Baza przepisów") },
+                actions = {
+                    TextButton(onClick = onImport) {
+                        Icon(Icons.Outlined.FileDownload, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Importuj")
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
             )
         },
@@ -152,17 +164,26 @@ private fun RecipeCard(recipe: Recipe, onClick: () -> Unit) {
             modifier = Modifier.padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Surface(
-                shape = MaterialTheme.shapes.medium,
-                color = MaterialTheme.colorScheme.primaryContainer,
-                modifier = Modifier.size(52.dp)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        Icons.Outlined.Restaurant,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary
-                    )
+            if (recipe.imagePath != null) {
+                StoredPhoto(
+                    recipe.imagePath,
+                    modifier = Modifier
+                        .size(64.dp)
+                        .clip(MaterialTheme.shapes.medium)
+                )
+            } else {
+                Surface(
+                    shape = MaterialTheme.shapes.medium,
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    modifier = Modifier.size(64.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            Icons.Outlined.Restaurant,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
             }
             Spacer(Modifier.width(14.dp))

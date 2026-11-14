@@ -1,6 +1,10 @@
 package com.example.mojadieta.ui.recipes
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.horizontalScroll
+import com.example.mojadieta.ui.components.PhotoAspect
+import com.example.mojadieta.ui.components.PhotoField
+import com.example.mojadieta.ui.components.UnsavedChangesDialog
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.outlined.Add
@@ -71,13 +75,33 @@ fun RecipeEditScreen(
     viewModel: RecipeEditViewModel = viewModel(factory = AppViewModelProvider.Factory)
 ) {
     val form by viewModel.state.collectAsStateWithLifecycle()
+    var showUnsavedDialog by rememberSaveable { mutableStateOf(false) }
+    val tryExit = { if (form.isDirty) showUnsavedDialog = true else onBack() }
+
+    // Systemowy przycisk/gest „wstecz” – pytamy, jeśli są niezapisane zmiany.
+    BackHandler(enabled = form.isDirty) { showUnsavedDialog = true }
+
+    if (showUnsavedDialog) {
+        UnsavedChangesDialog(
+            onSave = {
+                showUnsavedDialog = false
+                viewModel.save(onSaved = onBack)
+            },
+            onDiscard = {
+                showUnsavedDialog = false
+                viewModel.discardChanges()
+                onBack()
+            },
+            onDismiss = { showUnsavedDialog = false }
+        )
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(if (form.isEditing) "Edytuj przepis" else "Nowy przepis") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = tryExit) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Wstecz")
                     }
                 },
@@ -121,6 +145,13 @@ private fun RecipeForm(
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            PhotoField(
+                imagePath = form.imagePath,
+                aspect = PhotoAspect.RECIPE,
+                imageStorage = viewModel.imageStorage,
+                onImageChanged = viewModel::onImageChange
+            )
+
             OutlinedTextField(
                 value = form.name,
                 onValueChange = viewModel::onNameChange,
@@ -263,12 +294,12 @@ private fun IngredientsSection(form: RecipeFormState, viewModel: RecipeEditViewM
     if (showPicker) {
         IngredientPickerSheet(
             products = products,
+            lookup = viewModel.productLookup,
             onDismiss = { showPicker = false },
             onAdd = { product, grams ->
                 viewModel.addIngredient(product, grams)
                 showPicker = false
-            },
-            onSaveCustomProduct = { product, onSaved -> viewModel.addCustomProduct(product, onSaved) }
+            }
         )
     }
     editIndex?.let { index ->

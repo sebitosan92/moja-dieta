@@ -3,6 +3,8 @@ package com.example.mojadieta.ui.recipes
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.mojadieta.data.food.ProductLookup
+import com.example.mojadieta.data.images.ImageStorage
 import com.example.mojadieta.domain.model.FoodProduct
 import com.example.mojadieta.domain.model.Recipe
 import com.example.mojadieta.domain.model.RecipeCategory
@@ -38,9 +40,20 @@ data class RecipeFormState(
     val autoNutrition: Boolean = true,
     val ingredientItems: List<RecipeIngredient> = emptyList(),
     val nutrition: RecipeNutrition? = null,
+    /** Ścieżka do zdjęcia przepisu (plik w pamięci aplikacji) albo null. */
+    val imagePath: String? = null,
     val showErrors: Boolean = false,
-    val isSaving: Boolean = false
+    val isSaving: Boolean = false,
+    /** Stan treści w chwili otwarcia/zapisu – do wykrywania niezapisanych zmian. */
+    val savedKey: List<Any?>? = null
 ) {
+    fun contentKey(): List<Any?> = listOf(
+        name, category, calories, protein, carbs, fat, ingredients, instructions,
+        servings, autoNutrition, ingredientItems, imagePath
+    )
+
+    val isDirty: Boolean get() = savedKey != null && contentKey() != savedKey
+
     val nameError: String? get() = if (name.isBlank()) "Podaj nazwę dania" else null
     val caloriesError: String? get() = when {
         autoNutrition -> null
@@ -73,14 +86,21 @@ class RecipeEditViewModel(
     savedStateHandle: SavedStateHandle,
     private val recipeRepository: RecipeRepository,
     private val productRepository: ProductRepository,
-    private val calculateRecipeNutrition: CalculateRecipeNutritionUseCase
+    private val calculateRecipeNutrition: CalculateRecipeNutritionUseCase,
+    val productLookup: ProductLookup,
+    val imageStorage: ImageStorage
 ) : ViewModel() {
 
     private val recipeId: Long = savedStateHandle.get<Long>(Routes.ARG_RECIPE_ID) ?: -1L
 
     private val _state = MutableStateFlow(
-        RecipeFormState(isEditing = recipeId > 0, isLoading = recipeId > 0).withNutrition()
+        RecipeFormState(isEditing = recipeId > 0, isLoading = recipeId > 0).withNutrition().let {
+            if (recipeId > 0) it else it.copy(savedKey = it.contentKey())
+        }
     )
+
+    /** Zdjęcie przepisu w chwili otwarcia – żeby po zapisie usunąć stary plik. */
+    private var originalImagePath: String? = null
     val state: StateFlow<RecipeFormState> = _state.asStateFlow()
 
     /** Wbudowana baza + własne produkty do wyszukiwarki składników. */
@@ -108,8 +128,10 @@ class RecipeEditViewModel(
                             instructions = recipe.instructions,
                             servings = recipe.servings,
                             autoNutrition = recipe.autoNutrition,
-                            ingredientItems = items
-                        ).withNutrition()
+                            ingredientItems = items,
+                            imagePath = recipe.imagePath
+                        ).withNutrition().let { loaded -> loaded.copy(savedKey = loaded.contentKey()) }
+                            .also { originalImagePath = recipe.imagePath }
                     }
                 }
             }
@@ -127,6 +149,20 @@ class RecipeEditViewModel(
     fun onFatChange(value: String) = _state.update { it.copy(fat = value) }
     fun onIngredientsChange(value: String) = _state.update { it.copy(ingredients = value) }
     fun onInstructionsChange(value: String) = _state.update { it.copy(instructions = value) }
+
+    /** Nowe zdjęcie (już przycięte i zapisane) albo null = usunięcie zdjęcia. */
+    fun onImageChange(path: String?) {
+        val previous = _state.value.imagePath
+        // Usuwamy od razu tylko pliki dodane w tej sesji edycji (nie oryginalne zdjęcie przepisu).
+        if (previous != null && previous != originalImagePath && previous != path) imageStorage.delete(previous)
+        _state.update { it.copy(imagePath = path) }
+    }
+
+    /** Odrzucenie zmian – sprząta zdjęcia dodane w tej sesji. */
+    fun discardChanges() {
+        val current = _state.value.imagePath
+        if (current != null && current != originalImagePath) imageStorage.delete(current)
+    }
 
     fun onServingsChange(value: Int) =
         _state.update { it.copy(servings = value.coerceIn(1, 50)).withNutrition() }
@@ -161,10 +197,6 @@ class RecipeEditViewModel(
         current.copy(ingredientItems = current.ingredientItems.filterIndexed { i, _ -> i != index }).withNutrition()
     }
 
-    /** Zapisuje własny produkt w bazie i zwraca go (z nadanym id) przez [onSaved]. */
-    fun addCustomProduct(product: FoodProduct, onSaved: (FoodProduct) -> Unit) {
-        viewModelScope.launch { onSaved(productRepository.addCustomProduct(product)) }
-    }
 
     fun save(onSaved: () -> Unit) {
         val form = _state.value
@@ -182,18 +214,22 @@ class RecipeEditViewModel(
                     id = if (form.isEditing) recipeId else 0L,
                     name = form.name.trim(),
                     category = form.category,
-                    calories = if (useAuto) perServing!!.calories else form.calories.trim().toInt(),
-                    protein = if (useAuto) perServing!!.protein else parseDecimal(form.protein) ?: 0.0,
-                    carbs = if (useAuto) perServing!!.carbs else parseDecimal(form.carbs) ?: 0.0,
-                    fat = if (useAuto) perServing!!.fat else parseDecimal(form.fat) ?: 0.0,
+                    calories = if (useAuto) perServing.calories else form.calories.trim().toInt(),
+                    protein = if (useAuto) perServing.protein else parseDecimal(form.protein) ?: 0.0,
+                    carbs = if (useAuto) perServing.carbs else parseDecimal(form.carbs) ?: 0.0,
+                    fat = if (useAuto) perServing.fat else parseDecimal(form.fat) ?: 0.0,
                     ingredients = form.ingredients.trim(),
                     instructions = form.instructions.trim(),
                     servings = form.servings,
-                    autoNutrition = form.autoNutrition
+                    autoNutrition = form.autoNutrition,
+                    imagePath = form.imagePath
                 ),
                 form.ingredientItems
             )
-            _state.update { it.copy(isSaving = false) }
+            val old = originalImagePath
+            if (old != null && old != form.imagePath) imageStorage.delete(old)
+            originalImagePath = form.imagePath
+            _state.update { it.copy(isSaving = false, savedKey = it.contentKey()) }
             onSaved()
         }
     }

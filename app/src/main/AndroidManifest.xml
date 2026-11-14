@@ -1,13 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Sprawdzanie i pobieranie aktualizacji z GitHuba -->
+    <!-- Sprawdzanie i pobieranie aktualizacji z GitHuba, wyszukiwanie produktów w Open Food Facts -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Instalacja pobranej aktualizacji -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- Powiadomienie o dostępnej aktualizacji (Android 13+) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Skaner kodów kreskowych i zdjęcia posiłków -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <!-- Odczyt pomiarów wagi z Health Connect -->
+    <uses-permission android:name="android.permission.health.READ_WEIGHT" />
+
+    <queries>
+        <!-- Health Connect na Androidzie 13 i starszym -->
+        <package android:name="com.google.android.apps.healthdata" />
+    </queries>
 
     <application
         android:name=".DietApplication"
@@ -29,6 +39,44 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Wyjaśnienie użycia danych zdrowotnych (wymagane przez Health Connect) -->
+        <activity
+            android:name=".PrivacyPolicyActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
+            </intent-filter>
+        </activity>
+
+        <activity-alias
+            android:name="ViewPermissionUsageActivity"
+            android:exported="true"
+            android:permission="android.permission.START_VIEW_PERMISSION_USAGE"
+            android:targetActivity=".PrivacyPolicyActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
+                <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- Modele ML Kit (skaner kodów, rozpoznawanie tekstu) pobierane przez Google Play przy instalacji -->
+        <meta-data
+            android:name="com.google.mlkit.vision.DEPENDENCIES"
+            android:value="barcode,ocr" />
+
+        <!-- Widżet na ekran główny -->
+        <receiver
+            android:name=".widget.DietWidgetReceiver"
+            android:exported="true"
+            android:label="@string/widget_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/diet_widget_info" />
+        </receiver>
 
         <provider
             android:name="androidx.core.content.FileProvider"

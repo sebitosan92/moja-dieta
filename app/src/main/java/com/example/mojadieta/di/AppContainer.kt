@@ -2,7 +2,17 @@ package com.example.mojadieta.di
 
 import android.content.Context
 import com.example.mojadieta.BuildConfig
+import com.example.mojadieta.data.food.OpenFoodFactsClient
+import com.example.mojadieta.data.food.ProductLookup
+import com.example.mojadieta.data.health.HealthConnectManager
+import com.example.mojadieta.data.importer.TextExtractor
+import com.example.mojadieta.data.images.ImageStorage
 import com.example.mojadieta.data.local.DietDatabase
+import com.example.mojadieta.data.profile.ProfileRepositoryImpl
+import com.example.mojadieta.data.repository.WeightRepositoryImpl
+import com.example.mojadieta.domain.repository.ProfileRepository
+import com.example.mojadieta.domain.repository.WeightRepository
+import com.example.mojadieta.domain.usecase.CalculateDailyGoalUseCase
 import com.example.mojadieta.data.update.GitHubUpdateRepository
 import com.example.mojadieta.data.update.UpdatePreferences
 import com.example.mojadieta.domain.update.CheckForUpdateUseCase
@@ -35,9 +45,17 @@ class AppContainer(context: Context) {
     val waterRepository: WaterRepository = WaterRepositoryImpl(database.waterDao())
     val noteRepository: NoteRepository = NoteRepositoryImpl(database.noteDao())
     val productRepository: ProductRepository = ProductRepositoryImpl(database.customProductDao())
+    val profileRepository: ProfileRepository = ProfileRepositoryImpl(context)
+    val weightRepository: WeightRepository = WeightRepositoryImpl(database.weightDao(), profileRepository)
+
+    val imageStorage = ImageStorage(context)
+    val productLookup = ProductLookup(productRepository, OpenFoodFactsClient())
+    val healthConnect = HealthConnectManager(context)
+    val textExtractor by lazy { TextExtractor(context, imageStorage) }
 
     val calculateNutritionSummary = CalculateNutritionSummaryUseCase()
     val calculateRecipeNutrition = CalculateRecipeNutritionUseCase()
+    val calculateDailyGoal = CalculateDailyGoalUseCase()
     val addRecipeToDiary = AddRecipeToDiaryUseCase(diaryRepository)
     val copyPlannedMealsToDiary = CopyPlannedMealsToDiaryUseCase(plannerRepository, diaryRepository)
 
@@ -46,4 +64,20 @@ class AppContainer(context: Context) {
     val updatePreferences = UpdatePreferences(context)
     val updateRepository: UpdateRepository = GitHubUpdateRepository(context, BuildConfig.GITHUB_REPO)
     val checkForUpdate = CheckForUpdateUseCase(updateRepository, currentVersion)
+
+    /**
+     * Pobiera nowe pomiary wagi z Health Connect (jeśli jest dostępny i jest zgoda).
+     * Zwraca liczbę nowych pomiarów albo null, gdy synchronizacja nie jest możliwa.
+     */
+    suspend fun syncWeightsFromHealthConnect(): Int? {
+        if (healthConnect.availability() != HealthConnectManager.Availability.AVAILABLE) return null
+        if (!healthConnect.hasPermission()) return null
+        return weightRepository.importExternal(healthConnect.readWeights())
+    }
+
+    /** Usuwa pliki zdjęć, których nie używa już żaden przepis ani wpis w dzienniku. */
+    suspend fun cleanupImages() {
+        val used = (recipeRepository.imagePaths() + diaryRepository.imagePaths()).toSet()
+        imageStorage.cleanup(used)
+    }
 }

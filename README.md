@@ -10,15 +10,20 @@ Natywna aplikacja dietetyczna na Androida: dziennik posiłków z licznikiem wody
 
 ## Funkcje
 
-- **Dziennik** — kalendarz tygodniowy, podsumowanie kalorii i makroskładników (B/W/T), posiłki według pory dnia, odhaczanie zjedzonych, licznik wody z dziennym celem.
-- **Przepisy** — wyszukiwarka, kategorie, szczegóły ze składnikami i krokami, dodawanie/edycja, dodawanie do dziennika lub planowanie w kalendarzu.
-- **Planer** — widok tygodnia, planowanie przepisów na konkretne dni i pory, kopiowanie dnia lub całego tygodnia do dziennika.
+- **Dziennik** — kalendarz tygodniowy z wyborem dowolnego dnia, podsumowanie kalorii i makro (B/W/T) względem dziennego celu, posiłki według pory dnia z liczbą porcji i zdjęciem, licznik wody, karta wagi.
+- **Profil i cele** — kalkulator zapotrzebowania (wzór Mifflina-St Jeora, aktywność, cel: redukcja / utrzymanie / masa) albo cele ustawione ręcznie.
+- **Przepisy** — wyszukiwarka, kategorie, zdjęcia z kadrowaniem, składniki z gramaturą i **automatyczne liczenie kalorii i makro** (na porcję), dodawanie do dziennika lub planera.
+- **Baza produktów** — ponad 350 popularnych produktów, własne produkty, **skaner kodów kreskowych** i wyszukiwanie w [Open Food Facts](https://world.openfoodfacts.org) (dane na licencji ODbL).
+- **Import przepisów** — z plików PDF, zdjęć i zrzutów ekranu (rozpoznawanie tekstu na telefonie); jadłospisy z podziałem na dni trafiają od razu do Planera.
+- **Planer** — widok tygodnia, planowanie przepisów, kopiowanie dnia lub tygodnia do dziennika.
+- **Waga** — ręczne pomiary, wykres i zmiana z 7/30 dni, automatyczny odczyt z **Health Connect** (np. waga Huawei przez Huawei Zdrowie).
+- **Widżet** — kalorie dnia i licznik wody z przyciskami +250/+500 ml.
 - **Notatnik** — listy zakupów, pomiary, samopoczucie.
 - **Aktualizacje** — z GitHub Releases, z powiadomieniem o nowej wersji (sprawdzanie w tle co 12 h).
 
 ## Technologie
 
-Kotlin · Jetpack Compose · Material 3 · Room · Navigation Compose · WorkManager · MVVM + Clean Architecture.
+Kotlin · Jetpack Compose · Material 3 · Room · Navigation Compose · WorkManager · CameraX · ML Kit · Glance · Health Connect · Coil · MVVM + Clean Architecture.
 
 ## Budowanie
 

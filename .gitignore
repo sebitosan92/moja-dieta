@@ -1,0 +1,21 @@
+*.iml
+.gradle/
+/local.properties
+/.idea/
+.DS_Store
+/build/
+/app/build/
+/captures/
+.externalNativeBuild/
+.cxx/
+.kotlin/
+
+# Klucz podpisywania wydań – NIGDY nie wrzucaj do repozytorium
+/keystore/
+keystore.properties
+*.jks
+*.keystore
+
+# Pliki APK kopiowane przy wydawaniu
+*.apk
+/build.log

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Mała, jednokolorowa ikona powiadomień: miseczka z listkami. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M11.6,10.6 C11.6,8.4 10.2,6.7 7.8,6.3 C7.6,8.7 9.3,10.4 11.6,10.6 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M12.4,10.6 C12.4,7.7 14.1,5.8 17,5.3 C17,8.2 15.3,10.4 12.4,10.6 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M3,11.2 H21 C21,15.9 17,19.2 12,19.2 C7,19.2 3,15.9 3,11.2 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M9,20 H15 V21.4 H9 Z" />
+</vector>

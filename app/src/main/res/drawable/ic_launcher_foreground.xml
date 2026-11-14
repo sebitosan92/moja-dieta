@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Logo: miseczka z dwoma listkami. Wszystko mieści się w bezpiecznej strefie (promień 33 od środka). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- cień pod miseczką -->
+    <path
+        android:fillColor="#26000000"
+        android:pathData="M33,58 H79 C79,71.5 68.7,81 56,81 C43.3,81 33,71.5 33,58 Z" />
+
+    <!-- lewy listek (biały) -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M53,52 C53,43 47,36 37,34 C36,44 43,51 53,52 Z" />
+    <path
+        android:strokeColor="#FF1F9D74"
+        android:strokeWidth="1.6"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M51.5,50 C49,45.5 45,40.5 40.5,37.5" />
+
+    <!-- prawy listek (jasna mięta) -->
+    <path
+        android:fillColor="#FFCDF7E5"
+        android:pathData="M55,52 C55,40 62,32 74,30 C74,42 67,51 55,52 Z" />
+    <path
+        android:strokeColor="#FF1F9D74"
+        android:strokeWidth="1.6"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M56.5,50 C60,44 64.5,38.5 70,34" />
+
+    <!-- łodyżka -->
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2.4"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M54,55 L54,50" />
+
+    <!-- miseczka -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M31,55 H77 C77,68.5 66.7,78 54,78 C41.3,78 31,68.5 31,55 Z" />
+    <!-- rant miseczki -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M31,52.5 H77 A2.5,2.5 0 0 1 77,57.5 H31 A2.5,2.5 0 0 1 31,52.5 Z" />
+    <!-- dekoracyjny pasek na miseczce -->
+    <path
+        android:strokeColor="#FFBFEFDB"
+        android:strokeWidth="2.2"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M37,63.5 H71" />
+    <!-- akcent: pomarańczowa kropka (owoc) -->
+    <path
+        android:fillColor="#FFFFA552"
+        android:pathData="M61,63.5 m-2.6,0 a2.6,2.6 0 1,0 5.2,0 a2.6,2.6 0 1,0 -5.2,0" />
+
+    <!-- podstawka -->
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="3.4"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M46.5,81 H61.5" />
+</vector>

@@ -1,0 +1,74 @@
+package com.example.mojadieta.ui
+
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.createSavedStateHandle
+import androidx.lifecycle.viewmodel.CreationExtras
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import com.example.mojadieta.DietApplication
+import com.example.mojadieta.di.AppContainer
+import com.example.mojadieta.ui.diary.DiaryViewModel
+import com.example.mojadieta.ui.notes.NoteEditViewModel
+import com.example.mojadieta.ui.notes.NotesViewModel
+import com.example.mojadieta.ui.planner.PlannerViewModel
+import com.example.mojadieta.ui.recipes.RecipeDetailViewModel
+import com.example.mojadieta.ui.recipes.RecipeEditViewModel
+import com.example.mojadieta.ui.recipes.RecipesViewModel
+import com.example.mojadieta.ui.update.UpdateViewModel
+
+/** Fabryka wszystkich ViewModeli aplikacji – zależności pochodzą z [AppContainer]. */
+object AppViewModelProvider {
+    val Factory = viewModelFactory {
+        initializer {
+            val c = container()
+            DiaryViewModel(
+                diaryRepository = c.diaryRepository,
+                waterRepository = c.waterRepository,
+                recipeRepository = c.recipeRepository,
+                addRecipeToDiary = c.addRecipeToDiary,
+                calculateNutritionSummary = c.calculateNutritionSummary
+            )
+        }
+        initializer {
+            RecipesViewModel(container().recipeRepository)
+        }
+        initializer {
+            val c = container()
+            RecipeDetailViewModel(
+                savedStateHandle = createSavedStateHandle(),
+                recipeRepository = c.recipeRepository,
+                plannerRepository = c.plannerRepository,
+                addRecipeToDiary = c.addRecipeToDiary
+            )
+        }
+        initializer {
+            RecipeEditViewModel(createSavedStateHandle(), container().recipeRepository)
+        }
+        initializer {
+            val c = container()
+            PlannerViewModel(
+                plannerRepository = c.plannerRepository,
+                recipeRepository = c.recipeRepository,
+                copyPlannedMealsToDiary = c.copyPlannedMealsToDiary
+            )
+        }
+        initializer {
+            NotesViewModel(container().noteRepository)
+        }
+        initializer {
+            NoteEditViewModel(createSavedStateHandle(), container().noteRepository)
+        }
+        initializer {
+            val c = container()
+            UpdateViewModel(
+                checkForUpdate = c.checkForUpdate,
+                repository = c.updateRepository,
+                preferences = c.updatePreferences,
+                currentVersion = c.currentVersion
+            )
+        }
+    }
+}
+
+private fun CreationExtras.container(): AppContainer =
+    (this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY] as DietApplication).container

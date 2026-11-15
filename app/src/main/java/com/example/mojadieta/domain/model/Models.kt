@@ -44,7 +44,14 @@ data class Recipe(
     /** true = kalorie i makro wyliczane automatycznie ze składników z gramaturą. */
     val autoNutrition: Boolean = false,
     /** Ścieżka do zdjęcia w pamięci aplikacji. */
-    val imagePath: String? = null
+    val imagePath: String? = null,
+    val favorite: Boolean = false,
+    /** Tagi, np. „szybkie”, „wege”. */
+    val tags: List<String> = emptyList(),
+    /** Na porcję; null = brak danych. */
+    val fiber: Double? = null,
+    val sugar: Double? = null,
+    val salt: Double? = null
 ) {
     val ingredientList: List<String>
         get() = ingredients.lines().map { it.trim().removePrefix("-").trim() }.filter { it.isNotBlank() }
@@ -66,7 +73,10 @@ data class MealEntry(
     val isEaten: Boolean = false,
     /** Liczba porcji – kalorie i makro wpisu są już przemnożone przez tę wartość. */
     val servings: Double = 1.0,
-    val imagePath: String? = null
+    val imagePath: String? = null,
+    val fiber: Double? = null,
+    val sugar: Double? = null,
+    val salt: Double? = null
 )
 
 data class PlannedMeal(
@@ -110,7 +120,13 @@ data class FoodProduct(
     val unitName: String? = null,
     val unitGrams: Double? = null,
     val customId: Long? = null,
-    val barcode: String? = null
+    val barcode: String? = null,
+    /** Na 100 g; null = brak danych. */
+    val fiber: Double? = null,
+    val sugar: Double? = null,
+    val salt: Double? = null,
+    /** Dział sklepu do listy zakupów, np. „Warzywa”. */
+    val group: String? = null
 ) {
     val isCustom: Boolean get() = customId != null
 }
@@ -123,12 +139,18 @@ data class RecipeIngredient(
     val kcal100: Double,
     val protein100: Double,
     val carbs100: Double,
-    val fat100: Double
+    val fat100: Double,
+    val fiber100: Double? = null,
+    val sugar100: Double? = null,
+    val salt100: Double? = null
 ) {
     val calories: Double get() = kcal100 * grams / 100.0
     val protein: Double get() = protein100 * grams / 100.0
     val carbs: Double get() = carbs100 * grams / 100.0
     val fat: Double get() = fat100 * grams / 100.0
+    val fiber: Double? get() = fiber100?.times(grams / 100.0)
+    val sugar: Double? get() = sugar100?.times(grams / 100.0)
+    val salt: Double? get() = salt100?.times(grams / 100.0)
 
     companion object {
         fun from(product: FoodProduct, grams: Double) = RecipeIngredient(
@@ -137,7 +159,10 @@ data class RecipeIngredient(
             kcal100 = product.kcal,
             protein100 = product.protein,
             carbs100 = product.carbs,
-            fat100 = product.fat
+            fat100 = product.fat,
+            fiber100 = product.fiber,
+            sugar100 = product.sugar,
+            salt100 = product.salt
         )
     }
 }
@@ -146,7 +171,13 @@ data class NutritionSummary(
     val calories: Int = 0,
     val protein: Double = 0.0,
     val carbs: Double = 0.0,
-    val fat: Double = 0.0
+    val fat: Double = 0.0,
+    /** Suma znanych wartości; null = brak danych w żadnym wpisie. */
+    val fiber: Double? = null,
+    val sugar: Double? = null,
+    val salt: Double? = null,
+    /** true = część wpisów nie ma danych o błonniku/cukrach/soli. */
+    val extrasIncomplete: Boolean = false
 )
 
 /** Pomiar wagi – wpisany ręcznie albo zaimportowany z Health Connect. */
@@ -205,4 +236,157 @@ data class DailyGoal(
     val protein: Int,
     val carbs: Int,
     val fat: Int
+)
+
+// ---------------- Aktywność ----------------
+
+enum class Intensity(val label: String) { LIGHT("Lekka"), MODERATE("Umiarkowana"), VIGOROUS("Intensywna") }
+
+/** Rodzaj aktywności z wartościami MET dla trzech intensywności. */
+enum class ActivityType(
+    val label: String,
+    val metLight: Double,
+    val metModerate: Double,
+    val metVigorous: Double,
+    val hasDistance: Boolean = false
+) {
+    CYCLING("Jazda na rowerze", 4.0, 6.8, 10.0, true),
+    STATIONARY_BIKE("Rower stacjonarny", 3.5, 6.8, 8.8),
+    WALKING("Spacer", 2.8, 3.5, 5.0, true),
+    RUNNING("Bieg", 7.0, 9.8, 11.5, true),
+    NORDIC_WALKING("Nordic walking", 4.8, 5.5, 6.8, true),
+    HIKING("Wędrówka", 5.3, 6.0, 7.8, true),
+    SWIMMING("Pływanie", 5.8, 7.0, 9.8, true),
+    GYM("Siłownia", 3.5, 5.0, 6.0),
+    FITNESS("Fitness / aerobik", 5.0, 7.3, 8.5),
+    YOGA("Joga / stretching", 2.0, 2.5, 4.0),
+    ROLLER_SKATING("Rolki", 5.0, 7.0, 9.8, true),
+    DANCING("Taniec", 4.0, 5.5, 7.8),
+    TENNIS("Tenis / badminton", 5.0, 7.0, 8.0),
+    GARDENING("Prace w ogrodzie", 3.0, 4.0, 5.0),
+    OTHER("Inna aktywność", 3.0, 4.5, 6.5);
+
+    fun met(intensity: Intensity) = when (intensity) {
+        Intensity.LIGHT -> metLight
+        Intensity.MODERATE -> metModerate
+        Intensity.VIGOROUS -> metVigorous
+    }
+
+    companion object {
+        fun fromName(name: String?) = entries.firstOrNull { it.name == name } ?: OTHER
+    }
+}
+
+data class ActivityEntry(
+    val id: Long = 0,
+    val date: LocalDate,
+    val startMillis: Long,
+    val type: ActivityType,
+    /** Własna nazwa (np. z Health Connect albo „Inna aktywność”). */
+    val title: String? = null,
+    val durationMin: Int,
+    val intensity: Intensity = Intensity.MODERATE,
+    val distanceKm: Double? = null,
+    val avgHeartRate: Int? = null,
+    val watts: Int? = null,
+    val calories: Int,
+    val note: String = "",
+    /** "manual" albo pakiet aplikacji źródłowej z Health Connect. */
+    val source: String = SOURCE_MANUAL,
+    val externalId: String? = null
+) {
+    val isManual: Boolean get() = source == SOURCE_MANUAL
+    val displayName: String get() = title?.takeIf { it.isNotBlank() } ?: type.label
+
+    companion object {
+        const val SOURCE_MANUAL = "manual"
+    }
+}
+
+/** Ulubiony trening do szybkiego dodawania. */
+data class ActivityTemplate(
+    val id: Long = 0,
+    val name: String,
+    val type: ActivityType,
+    val durationMin: Int,
+    val intensity: Intensity,
+    val distanceKm: Double? = null
+)
+
+data class PlannedActivity(
+    val id: Long = 0,
+    val date: LocalDate,
+    val type: ActivityType,
+    val durationMin: Int,
+    val intensity: Intensity,
+    val note: String = ""
+)
+
+// ---------------- Lista zakupów ----------------
+
+data class ShoppingItem(
+    val id: Long = 0,
+    val name: String,
+    val quantity: String,
+    val group: String,
+    val checked: Boolean = false,
+    /** true = dodana ręcznie (nie znika przy ponownym generowaniu z planera). */
+    val manual: Boolean = false,
+    val position: Int = 0
+)
+
+// ---------------- Skład ciała i obwody ----------------
+
+enum class BodyMetricType(val label: String, val unit: String, val isComposition: Boolean) {
+    BODY_FAT("Tkanka tłuszczowa", "%", true),
+    LEAN_MASS("Masa beztłuszczowa", "kg", true),
+    BODY_WATER("Woda w organizmie", "kg", true),
+    BONE_MASS("Masa kostna", "kg", true),
+    WAIST("Talia", "cm", false),
+    HIPS("Biodra", "cm", false),
+    CHEST("Klatka piersiowa", "cm", false),
+    THIGH("Udo", "cm", false),
+    ARM("Ramię", "cm", false);
+
+    companion object {
+        fun fromName(name: String?) = entries.firstOrNull { it.name == name } ?: WAIST
+    }
+}
+
+data class BodyMetric(
+    val id: Long = 0,
+    val date: LocalDate,
+    val timeMillis: Long,
+    val type: BodyMetricType,
+    val value: Double,
+    val source: String = WeightEntry.SOURCE_MANUAL,
+    val externalId: String? = null
+)
+
+/** Suma dnia do kropek w kalendarzu i statystyk. */
+data class DayTotals(
+    val date: LocalDate,
+    val eatenCalories: Int,
+    val eatenProtein: Double,
+    val eatenCarbs: Double,
+    val eatenFat: Double,
+    val entries: Int,
+    /** Wpisy jeszcze niezaznaczone jako zjedzone. */
+    val notEaten: Int = 0
+)
+
+/** Kroki, aktywne kalorie i dystans z Health Connect. */
+data class DailySteps(
+    val date: LocalDate,
+    val steps: Int,
+    val activeCalories: Int,
+    val distanceKm: Double
+)
+
+/** Statystyka użycia produktu (ostatnio używane, ulubione). */
+data class ProductUsage(
+    val name: String,
+    val count: Int,
+    val lastUsed: Long,
+    val favorite: Boolean
 )

@@ -1,5 +1,10 @@
 package com.example.mojadieta.ui.recipes
 
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.StarBorder
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -89,6 +94,7 @@ fun RecipeDetailScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
+    val context = LocalContext.current
     var showAddToToday by rememberSaveable { mutableStateOf(false) }
     var showPlanDialog by rememberSaveable { mutableStateOf(false) }
     var showDeleteDialog by rememberSaveable { mutableStateOf(false) }
@@ -111,6 +117,18 @@ fun RecipeDetailScreen(
                 },
                 actions = {
                     if (recipe != null) {
+                        IconButton(onClick = viewModel::toggleFavorite) {
+                            Icon(
+                                if (recipe.favorite) Icons.Filled.Star else Icons.Outlined.StarBorder,
+                                contentDescription = if (recipe.favorite) "Usuń z ulubionych" else "Dodaj do ulubionych",
+                                tint = if (recipe.favorite) MaterialTheme.colorScheme.tertiary else LocalContentColor.current
+                            )
+                        }
+                        IconButton(onClick = {
+                            RecipeSharer.share(context, recipe, (state as? RecipeDetailState.Loaded)?.ingredients.orEmpty())
+                        }) {
+                            Icon(Icons.Outlined.Share, contentDescription = "Udostępnij przepis")
+                        }
                         IconButton(onClick = { onEdit(recipe.id) }) {
                             Icon(Icons.Outlined.Edit, contentDescription = "Edytuj przepis")
                         }
@@ -222,6 +240,14 @@ private fun RecipeDetailContent(
                 }
                 if (recipe.autoNutrition) AutoNutritionBadge()
             }
+            if (recipe.tags.isNotEmpty()) {
+                Text(
+                    recipe.tags.joinToString("  ") { "#$it" },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.secondary,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
         }
 
         Card(
@@ -238,6 +264,20 @@ private fun RecipeDetailContent(
                 NutritionValue("${formatGrams(recipe.protein)} g", "Białko", ProteinColor)
                 NutritionValue("${formatGrams(recipe.carbs)} g", "Węglowodany", CarbsColor)
                 NutritionValue("${formatGrams(recipe.fat)} g", "Tłuszcze", FatColor)
+            }
+            val extras = listOfNotNull(
+                recipe.fiber?.let { "Błonnik ${formatGrams(it)} g" },
+                recipe.sugar?.let { "Cukry ${formatGrams(it)} g" },
+                recipe.salt?.let { "Sól ${formatGrams(it)} g" }
+            )
+            if (extras.isNotEmpty()) {
+                Text(
+                    extras.joinToString(" · "),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
             }
         }
 

@@ -63,6 +63,11 @@ class RecipeDetailViewModel(
         }
     }
 
+    fun toggleFavorite() {
+        val recipe = (state.value as? RecipeDetailState.Loaded)?.recipe ?: return
+        viewModelScope.launch { recipeRepository.setFavorite(recipe.id, !recipe.favorite) }
+    }
+
     fun deleteRecipe(onDeleted: () -> Unit) {
         viewModelScope.launch {
             recipeRepository.deleteRecipe(recipeId)

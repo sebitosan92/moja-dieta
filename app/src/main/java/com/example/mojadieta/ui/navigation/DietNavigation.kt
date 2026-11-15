@@ -30,6 +30,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
+import androidx.compose.material.icons.automirrored.filled.DirectionsRun
+import androidx.compose.material.icons.automirrored.outlined.DirectionsRun
+import com.example.mojadieta.ui.activity.ActivityScreen
+import androidx.compose.runtime.remember
+import com.example.mojadieta.MainActivity
+import com.example.mojadieta.domain.settings.SplashMode
+import com.example.mojadieta.reminders.AppActions
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Today
@@ -73,6 +80,10 @@ object Routes {
     const val PROFILE = "profile"
     const val WEIGHT = "weight"
     const val IMPORT = "import"
+    const val ACTIVITY = "activity"
+    const val SHOPPING = "shopping"
+    const val STATS = "stats"
+    const val SETTINGS = "settings"
 
     const val ARG_RECIPE_ID = "recipeId"
     const val ARG_NOTE_ID = "noteId"
@@ -95,6 +106,7 @@ enum class TopLevelDestination(
     DIARY(Routes.DIARY, "Dziennik", Icons.Filled.Today, Icons.Outlined.Today),
     RECIPES(Routes.RECIPES, "Przepisy", Icons.AutoMirrored.Filled.MenuBook, Icons.AutoMirrored.Outlined.MenuBook),
     PLANNER(Routes.PLANNER, "Planer", Icons.Filled.CalendarMonth, Icons.Outlined.CalendarMonth),
+    ACTIVITY(Routes.ACTIVITY, "Aktywność", Icons.AutoMirrored.Filled.DirectionsRun, Icons.AutoMirrored.Outlined.DirectionsRun),
     NOTES(Routes.NOTES, "Notatnik", Icons.Filled.Description, Icons.Outlined.Description)
 }
 
@@ -103,19 +115,30 @@ enum class TopLevelDestination(
  * [openUpdatesRequest] = true, gdy aplikację otwarto z powiadomienia o aktualizacji.
  */
 @Composable
-fun DietAppRoot(openUpdatesRequest: Boolean, onOpenUpdatesHandled: () -> Unit) {
-    var splashFinished by rememberSaveable { mutableStateOf(false) }
+fun DietAppRoot(request: String?, onRequestHandled: () -> Unit) {
+    val context = LocalContext.current
+    // Rodzaj ekranu startowego ustalany raz na uruchomienie: 0 = brak, 1 = krótki, 2 = pełny.
+    val splashKind = rememberSaveable {
+        val settings = (context.applicationContext as DietApplication).container.settingsRepository
+        if (request != null) 0 else when (settings.current.splashMode) {
+            SplashMode.OFF -> 0
+            SplashMode.SHORT -> 1
+            SplashMode.ALWAYS -> 2
+            SplashMode.DAILY -> if (settings.consumeDailyFullSplash()) 2 else 1
+        }
+    }
+    var splashFinished by rememberSaveable { mutableStateOf(splashKind == 0) }
     Crossfade(targetState = splashFinished, animationSpec = tween(500), label = "splash") { finished ->
         if (finished) {
-            MainContent(openUpdatesRequest, onOpenUpdatesHandled)
+            MainContent(request, onRequestHandled)
         } else {
-            SplashScreen(onFinished = { splashFinished = true })
+            SplashScreen(short = splashKind == 1, onFinished = { splashFinished = true })
         }
     }
 }
 
 @Composable
-private fun MainContent(openUpdatesRequest: Boolean, onOpenUpdatesHandled: () -> Unit) {
+private fun MainContent(request: String?, onRequestHandled: () -> Unit) {
     val updateViewModel: UpdateViewModel = viewModel(factory = AppViewModelProvider.Factory)
     val updateState by updateViewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -141,11 +164,28 @@ private fun MainContent(openUpdatesRequest: Boolean, onOpenUpdatesHandled: () ->
 
     val navController = rememberNavController()
 
-    LaunchedEffect(openUpdatesRequest) {
-        if (openUpdatesRequest) {
-            navController.navigate(Routes.ABOUT) { launchSingleTop = true }
-            onOpenUpdatesHandled()
+    val openRequests = remember { OpenRequests() }
+    LaunchedEffect(request) {
+        if (request == null) return@LaunchedEffect
+        when (request) {
+            MainActivity.REQUEST_UPDATES -> navController.navigate(Routes.ABOUT) { launchSingleTop = true }
+            AppActions.SCAN -> {
+                navController.navigateToTopLevel(Routes.DIARY)
+                openRequests.scan = true
+            }
+            AppActions.ADD_WEIGHT -> {
+                navController.navigate(Routes.WEIGHT) { launchSingleTop = true }
+                openRequests.addWeight = true
+            }
+            AppActions.ADD_ACTIVITY -> {
+                navController.navigateToTopLevel(Routes.ACTIVITY)
+                openRequests.addActivity = true
+            }
+            AppActions.OPEN_PLANNER -> navController.navigateToTopLevel(Routes.PLANNER)
+            AppActions.OPEN_STATS -> navController.navigate(Routes.STATS) { launchSingleTop = true }
+            else -> navController.navigateToTopLevel(Routes.DIARY)
         }
+        onRequestHandled()
     }
 
     updateState.promptRelease?.let { release ->
@@ -159,11 +199,18 @@ private fun MainContent(openUpdatesRequest: Boolean, onOpenUpdatesHandled: () ->
         )
     }
 
-    AppScaffold(navController = navController, updateViewModel = updateViewModel)
+    AppScaffold(navController = navController, updateViewModel = updateViewModel, openRequests = openRequests)
+}
+
+/** Jednorazowe prośby z powiadomień i skrótów: otwórz skaner / dodawanie wagi / treningu. */
+class OpenRequests {
+    var scan by mutableStateOf(false)
+    var addWeight by mutableStateOf(false)
+    var addActivity by mutableStateOf(false)
 }
 
 @Composable
-private fun AppScaffold(navController: NavHostController, updateViewModel: UpdateViewModel) {
+private fun AppScaffold(navController: NavHostController, updateViewModel: UpdateViewModel, openRequests: OpenRequests) {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = backStackEntry?.destination
     val showBottomBar = TopLevelDestination.entries.any { it.route == currentDestination?.route }
@@ -199,6 +246,7 @@ private fun AppScaffold(navController: NavHostController, updateViewModel: Updat
         DietNavHost(
             navController = navController,
             updateViewModel = updateViewModel,
+            openRequests = openRequests,
             modifier = Modifier
                 .padding(innerPadding)
                 .consumeWindowInsets(innerPadding)
@@ -218,6 +266,7 @@ private fun NavHostController.navigateToTopLevel(route: String) {
 fun DietNavHost(
     navController: NavHostController,
     updateViewModel: UpdateViewModel,
+    openRequests: OpenRequests,
     modifier: Modifier = Modifier
 ) {
     NavHost(
@@ -229,8 +278,22 @@ fun DietNavHost(
             DiaryScreen(
                 onOpenAbout = { navController.navigate(Routes.ABOUT) },
                 onOpenProfile = { navController.navigate(Routes.PROFILE) },
-                onOpenWeight = { navController.navigate(Routes.WEIGHT) }
+                onOpenWeight = { navController.navigate(Routes.WEIGHT) },
+                onOpenStats = { navController.navigate(Routes.STATS) },
+                onOpenShopping = { navController.navigate(Routes.SHOPPING) },
+                onOpenSettings = { navController.navigate(Routes.SETTINGS) },
+                openScanRequest = openRequests.scan,
+                onScanRequestHandled = { openRequests.scan = false }
             )
+        }
+        composable(Routes.SHOPPING) {
+            com.example.mojadieta.ui.shopping.ShoppingScreen(onBack = { navController.popBackStack() })
+        }
+        composable(Routes.STATS) {
+            com.example.mojadieta.ui.stats.StatsScreen(onBack = { navController.popBackStack() })
+        }
+        composable(Routes.SETTINGS) {
+            com.example.mojadieta.ui.settings.SettingsScreen(onBack = { navController.popBackStack() })
         }
         composable(Routes.PROFILE) {
             ProfileScreen(
@@ -239,7 +302,11 @@ fun DietNavHost(
             )
         }
         composable(Routes.WEIGHT) {
-            WeightScreen(onBack = { navController.popBackStack() })
+            WeightScreen(
+                onBack = { navController.popBackStack() },
+                openAddRequest = openRequests.addWeight,
+                onAddRequestHandled = { openRequests.addWeight = false }
+            )
         }
         composable(Routes.IMPORT) {
             ImportScreen(
@@ -279,7 +346,13 @@ fun DietNavHost(
             RecipeEditScreen(onBack = { navController.popBackStack() })
         }
         composable(Routes.PLANNER) {
-            PlannerScreen()
+            PlannerScreen(onOpenShopping = { navController.navigate(Routes.SHOPPING) })
+        }
+        composable(Routes.ACTIVITY) {
+            ActivityScreen(
+                openAddRequest = openRequests.addActivity,
+                onAddRequestHandled = { openRequests.addActivity = false }
+            )
         }
         composable(Routes.NOTES) {
             NotesScreen(

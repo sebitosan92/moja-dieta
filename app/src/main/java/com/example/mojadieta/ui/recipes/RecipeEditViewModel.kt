@@ -42,6 +42,12 @@ data class RecipeFormState(
     val nutrition: RecipeNutrition? = null,
     /** Ścieżka do zdjęcia przepisu (plik w pamięci aplikacji) albo null. */
     val imagePath: String? = null,
+    /** Tagi wpisane po przecinku. */
+    val tags: String = "",
+    val favorite: Boolean = false,
+    val fiber: String = "",
+    val sugar: String = "",
+    val salt: String = "",
     val showErrors: Boolean = false,
     val isSaving: Boolean = false,
     /** Stan treści w chwili otwarcia/zapisu – do wykrywania niezapisanych zmian. */
@@ -49,7 +55,7 @@ data class RecipeFormState(
 ) {
     fun contentKey(): List<Any?> = listOf(
         name, category, calories, protein, carbs, fat, ingredients, instructions,
-        servings, autoNutrition, ingredientItems, imagePath
+        servings, autoNutrition, ingredientItems, imagePath, tags, fiber, sugar, salt
     )
 
     val isDirty: Boolean get() = savedKey != null && contentKey() != savedKey
@@ -129,7 +135,12 @@ class RecipeEditViewModel(
                             servings = recipe.servings,
                             autoNutrition = recipe.autoNutrition,
                             ingredientItems = items,
-                            imagePath = recipe.imagePath
+                            imagePath = recipe.imagePath,
+                            tags = recipe.tags.joinToString(", "),
+                            favorite = recipe.favorite,
+                            fiber = recipe.fiber?.let { formatGrams(it) }.orEmpty(),
+                            sugar = recipe.sugar?.let { formatGrams(it) }.orEmpty(),
+                            salt = recipe.salt?.let { formatGrams(it) }.orEmpty()
                         ).withNutrition().let { loaded -> loaded.copy(savedKey = loaded.contentKey()) }
                             .also { originalImagePath = recipe.imagePath }
                     }
@@ -148,6 +159,10 @@ class RecipeEditViewModel(
     fun onCarbsChange(value: String) = _state.update { it.copy(carbs = value) }
     fun onFatChange(value: String) = _state.update { it.copy(fat = value) }
     fun onIngredientsChange(value: String) = _state.update { it.copy(ingredients = value) }
+    fun onTagsChange(value: String) = _state.update { it.copy(tags = value.take(120)) }
+    fun onFiberChange(value: String) = _state.update { it.copy(fiber = value) }
+    fun onSugarChange(value: String) = _state.update { it.copy(sugar = value) }
+    fun onSaltChange(value: String) = _state.update { it.copy(salt = value) }
     fun onInstructionsChange(value: String) = _state.update { it.copy(instructions = value) }
 
     /** Nowe zdjęcie (już przycięte i zapisane) albo null = usunięcie zdjęcia. */
@@ -176,7 +191,10 @@ class RecipeEditViewModel(
                 calories = perServing.calories.toString(),
                 protein = formatGrams(perServing.protein),
                 carbs = formatGrams(perServing.carbs),
-                fat = formatGrams(perServing.fat)
+                fat = formatGrams(perServing.fat),
+                fiber = perServing.fiber?.let { formatGrams(it) }.orEmpty(),
+                sugar = perServing.sugar?.let { formatGrams(it) }.orEmpty(),
+                salt = perServing.salt?.let { formatGrams(it) }.orEmpty()
             )
         } else {
             current.copy(autoNutrition = enabled)
@@ -222,7 +240,12 @@ class RecipeEditViewModel(
                     instructions = form.instructions.trim(),
                     servings = form.servings,
                     autoNutrition = form.autoNutrition,
-                    imagePath = form.imagePath
+                    imagePath = form.imagePath,
+                    favorite = form.favorite,
+                    tags = form.tags.split(',', '#').map { it.trim().lowercase() }.filter { it.isNotEmpty() }.distinct(),
+                    fiber = if (useAuto) perServing.fiber else parseDecimal(form.fiber),
+                    sugar = if (useAuto) perServing.sugar else parseDecimal(form.sugar),
+                    salt = if (useAuto) perServing.salt else parseDecimal(form.salt)
                 ),
                 form.ingredientItems
             )

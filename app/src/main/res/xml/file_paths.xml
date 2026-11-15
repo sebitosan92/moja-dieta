@@ -4,4 +4,6 @@
     <cache-path name="updates" path="updates/" />
     <!-- Tymczasowe zdjęcia z aparatu (cacheDir/photos). -->
     <cache-path name="photos" path="photos/" />
+    <!-- Kopie zdjęć do udostępniania przepisów (cacheDir/share). -->
+    <cache-path name="share" path="share/" />
 </paths>

@@ -1,5 +1,7 @@
 package com.example.mojadieta.ui.recipes
 
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.foundation.clickable
 import kotlinx.coroutines.launch
 import com.example.mojadieta.ui.components.BarcodeScannerDialog
@@ -93,7 +95,11 @@ fun IngredientPickerSheet(
     onAdd: (FoodProduct, Double) -> Unit,
     title: String = "Dodaj składnik",
     confirmLabel: String = "Dodaj składnik",
-    startWithScanner: Boolean = false
+    startWithScanner: Boolean = false,
+    /** Ostatnio używane (od najnowszego) i ulubione – trafiają na górę listy. */
+    recentNames: List<String> = emptyList(),
+    favoriteNames: List<String> = emptyList(),
+    onToggleFavorite: ((FoodProduct) -> Unit)? = null
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
@@ -132,7 +138,10 @@ fun IngredientPickerSheet(
                     onProductClick = { step = PickerStep.Amount(it) },
                     onAddCustom = { step = PickerStep.Custom() },
                     onScan = { showScanner = true },
-                    onSearchOnline = { step = PickerStep.Online(query.trim()) }
+                    onSearchOnline = { step = PickerStep.Online(query.trim()) },
+                    recentNames = recentNames,
+                    favoriteNames = favoriteNames,
+                    onToggleFavorite = onToggleFavorite
                 )
 
                 is PickerStep.Amount -> AmountStep(
@@ -194,15 +203,31 @@ private fun ProductSearch(
     onProductClick: (FoodProduct) -> Unit,
     onAddCustom: () -> Unit,
     onScan: () -> Unit,
-    onSearchOnline: () -> Unit
+    onSearchOnline: () -> Unit,
+    recentNames: List<String> = emptyList(),
+    favoriteNames: List<String> = emptyList(),
+    onToggleFavorite: ((FoodProduct) -> Unit)? = null
 ) {
-    val filtered = remember(products, query) {
+    val favoriteKeys = remember(favoriteNames) { favoriteNames.map { FoodCatalog.normalize(it) }.toSet() }
+    val recentRank = remember(recentNames) {
+        recentNames.mapIndexed { index, name -> FoodCatalog.normalize(name) to index }.toMap()
+    }
+    val filtered = remember(products, query, favoriteKeys, recentRank) {
         val q = FoodCatalog.normalize(query)
         products
             .filter { q.isEmpty() || FoodCatalog.normalize(it.name).contains(q) }
             .sortedWith(
-                compareBy<FoodProduct> { if (it.isCustom) 0 else 1 }
-                    .thenBy { if (q.isNotEmpty() && FoodCatalog.normalize(it.name).startsWith(q)) 0 else 1 }
+                compareBy<FoodProduct> { if (q.isNotEmpty() && FoodCatalog.normalize(it.name).startsWith(q)) 0 else 1 }
+                    .thenBy {
+                        // Ulubione, potem ostatnio używane, potem moje produkty, potem reszta.
+                        val key = FoodCatalog.normalize(it.name)
+                        when {
+                            key in favoriteKeys -> 0
+                            key in recentRank -> 1 + recentRank.getValue(key)
+                            it.isCustom -> 100
+                            else -> 101
+                        }
+                    }
                     .thenComparator { a, b -> PolishCollator.compare(a.name, b.name) }
             )
     }
@@ -256,7 +281,14 @@ private fun ProductSearch(
     } else {
         LazyColumn(modifier = Modifier.heightIn(max = 400.dp)) {
             items(filtered, key = { (it.customId?.let { id -> "c$id" } ?: "b") + it.name }) { product ->
-                ProductRow(product = product, onClick = { onProductClick(product) })
+                val key = FoodCatalog.normalize(product.name)
+                ProductRow(
+                    product = product,
+                    onClick = { onProductClick(product) },
+                    favorite = key in favoriteKeys,
+                    recent = key in recentRank,
+                    onToggleFavorite = onToggleFavorite?.let { toggle -> { toggle(product) } }
+                )
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             }
         }
@@ -264,7 +296,13 @@ private fun ProductSearch(
 }
 
 @Composable
-private fun ProductRow(product: FoodProduct, onClick: () -> Unit) {
+private fun ProductRow(
+    product: FoodProduct,
+    onClick: () -> Unit,
+    favorite: Boolean = false,
+    recent: Boolean = false,
+    onToggleFavorite: (() -> Unit)? = null
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -289,6 +327,14 @@ private fun ProductRow(product: FoodProduct, onClick: () -> Unit) {
                         color = MaterialTheme.colorScheme.tertiary
                     )
                 }
+                if (recent && !favorite) {
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        "OSTATNIO",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.secondary
+                    )
+                }
             }
             MacroInlineRow(product.protein, product.carbs, product.fat)
         }
@@ -297,6 +343,15 @@ private fun ProductRow(product: FoodProduct, onClick: () -> Unit) {
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.primary
         )
+        if (onToggleFavorite != null) {
+            IconButton(onClick = onToggleFavorite) {
+                Icon(
+                    if (favorite) Icons.Filled.Star else Icons.Outlined.StarBorder,
+                    contentDescription = if (favorite) "Usuń z ulubionych" else "Dodaj do ulubionych",
+                    tint = if (favorite) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
     }
 }
 
@@ -461,6 +516,9 @@ private fun CustomProductStep(
     var protein by rememberSaveable { mutableStateOf("") }
     var carbs by rememberSaveable { mutableStateOf("") }
     var fat by rememberSaveable { mutableStateOf("") }
+    var fiber by rememberSaveable { mutableStateOf("") }
+    var sugar by rememberSaveable { mutableStateOf("") }
+    var salt by rememberSaveable { mutableStateOf("") }
     var showErrors by rememberSaveable { mutableStateOf(false) }
 
     val kcalValue = parseDecimal(kcal)
@@ -520,6 +578,17 @@ private fun CustomProductStep(
             NumberField("Węglowodany (g)", carbs, { carbs = it }, showErrors && carbsValue == null, Modifier.weight(1f))
             NumberField("Tłuszcze (g)", fat, { fat = it }, showErrors && fatValue == null, Modifier.weight(1f))
         }
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "Opcjonalnie (jeśli są na etykiecie):",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            NumberField("Błonnik (g)", fiber, { fiber = it }, false, Modifier.weight(1f))
+            NumberField("Cukry (g)", sugar, { sugar = it }, false, Modifier.weight(1f))
+            NumberField("Sól (g)", salt, { salt = it }, false, Modifier.weight(1f))
+        }
         Spacer(Modifier.height(16.dp))
         Button(
             onClick = {
@@ -527,7 +596,12 @@ private fun CustomProductStep(
                 if (name.isNotBlank() && kcalValue != null && proteinValue != null &&
                     carbsValue != null && fatValue != null
                 ) {
-                    onSave(FoodProduct(name.trim(), kcalValue, proteinValue, carbsValue, fatValue, barcode = barcode))
+                    onSave(
+                        FoodProduct(
+                            name.trim(), kcalValue, proteinValue, carbsValue, fatValue, barcode = barcode,
+                            fiber = parseDecimal(fiber), sugar = parseDecimal(sugar), salt = parseDecimal(salt)
+                        )
+                    )
                 }
             },
             modifier = Modifier.fillMaxWidth()

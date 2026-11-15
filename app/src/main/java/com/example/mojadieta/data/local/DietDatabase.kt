@@ -13,6 +13,17 @@ import com.example.mojadieta.data.local.dao.PlannedMealDao
 import com.example.mojadieta.data.local.dao.RecipeDao
 import com.example.mojadieta.data.local.dao.WaterDao
 import com.example.mojadieta.data.local.dao.WeightDao
+import com.example.mojadieta.data.local.dao.ActivityDao
+import com.example.mojadieta.data.local.dao.BodyMetricDao
+import com.example.mojadieta.data.local.dao.ProductUsageDao
+import com.example.mojadieta.data.local.dao.ShoppingDao
+import com.example.mojadieta.data.local.entity.ActivityEntity
+import com.example.mojadieta.data.local.entity.ActivityTemplateEntity
+import com.example.mojadieta.data.local.entity.BodyMetricEntity
+import com.example.mojadieta.data.local.entity.DailyStepsEntity
+import com.example.mojadieta.data.local.entity.PlannedActivityEntity
+import com.example.mojadieta.data.local.entity.ProductUsageEntity
+import com.example.mojadieta.data.local.entity.ShoppingItemEntity
 import com.example.mojadieta.data.local.entity.CustomProductEntity
 import com.example.mojadieta.data.local.entity.MealEntryEntity
 import com.example.mojadieta.data.local.entity.NoteEntity
@@ -31,9 +42,16 @@ import com.example.mojadieta.data.local.entity.WeightEntryEntity
         NoteEntity::class,
         RecipeIngredientEntity::class,
         CustomProductEntity::class,
-        WeightEntryEntity::class
+        WeightEntryEntity::class,
+        ActivityEntity::class,
+        ActivityTemplateEntity::class,
+        PlannedActivityEntity::class,
+        ShoppingItemEntity::class,
+        BodyMetricEntity::class,
+        DailyStepsEntity::class,
+        ProductUsageEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class DietDatabase : RoomDatabase() {
@@ -45,6 +63,10 @@ abstract class DietDatabase : RoomDatabase() {
     abstract fun noteDao(): NoteDao
     abstract fun customProductDao(): CustomProductDao
     abstract fun weightDao(): WeightDao
+    abstract fun activityDao(): ActivityDao
+    abstract fun shoppingDao(): ShoppingDao
+    abstract fun bodyMetricDao(): BodyMetricDao
+    abstract fun productUsageDao(): ProductUsageDao
 
     companion object {
         private const val DATABASE_NAME = "moja_dieta.db"
@@ -120,6 +142,129 @@ abstract class DietDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Wersja 3 → 4: ulubione i tagi przepisów, błonnik/cukry/sól, aktywność, lista zakupów,
+         * skład ciała i obwody, kroki z Health Connect, statystyki produktów.
+         */
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE recipes ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE recipes ADD COLUMN tags TEXT NOT NULL DEFAULT ''")
+                for (table in listOf("recipes", "meal_entries", "custom_products")) {
+                    for (col in listOf("fiber", "sugar", "salt")) {
+                        db.execSQL("ALTER TABLE $table ADD COLUMN $col REAL")
+                    }
+                }
+                for (col in listOf("fiber100", "sugar100", "salt100")) {
+                    db.execSQL("ALTER TABLE recipe_ingredients ADD COLUMN $col REAL")
+                }
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS activities (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        date INTEGER NOT NULL,
+                        startMillis INTEGER NOT NULL,
+                        type TEXT NOT NULL,
+                        title TEXT,
+                        durationMin INTEGER NOT NULL,
+                        intensity TEXT NOT NULL,
+                        distanceKm REAL,
+                        avgHeartRate INTEGER,
+                        watts INTEGER,
+                        calories INTEGER NOT NULL,
+                        note TEXT NOT NULL,
+                        source TEXT NOT NULL,
+                        externalId TEXT
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_activities_externalId ON activities (externalId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_activities_date ON activities (date)")
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS activity_templates (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        name TEXT NOT NULL,
+                        type TEXT NOT NULL,
+                        durationMin INTEGER NOT NULL,
+                        intensity TEXT NOT NULL,
+                        distanceKm REAL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS planned_activities (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        date INTEGER NOT NULL,
+                        type TEXT NOT NULL,
+                        durationMin INTEGER NOT NULL,
+                        intensity TEXT NOT NULL,
+                        note TEXT NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_planned_activities_date ON planned_activities (date)")
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS shopping_items (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        name TEXT NOT NULL,
+                        quantity TEXT NOT NULL,
+                        groupName TEXT NOT NULL,
+                        checked INTEGER NOT NULL,
+                        manual INTEGER NOT NULL,
+                        position INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS body_metrics (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        date INTEGER NOT NULL,
+                        timeMillis INTEGER NOT NULL,
+                        type TEXT NOT NULL,
+                        value REAL NOT NULL,
+                        source TEXT NOT NULL,
+                        externalId TEXT
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_body_metrics_externalId ON body_metrics (externalId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_body_metrics_date ON body_metrics (date)")
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS daily_steps (
+                        date INTEGER PRIMARY KEY NOT NULL,
+                        steps INTEGER NOT NULL,
+                        activeCalories INTEGER NOT NULL,
+                        distanceKm REAL NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS product_usage (
+                        `key` TEXT PRIMARY KEY NOT NULL,
+                        name TEXT NOT NULL,
+                        count INTEGER NOT NULL,
+                        lastUsed INTEGER NOT NULL,
+                        favorite INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
+        const val NAME = DATABASE_NAME
+
+        /** Zamyka bazę (przed przywróceniem kopii zapasowej). */
+        fun closeInstance() = synchronized(this) {
+            instance?.close()
+            instance = null
+        }
+
         @Volatile
         private var instance: DietDatabase? = null
 
@@ -130,7 +275,7 @@ abstract class DietDatabase : RoomDatabase() {
                     DietDatabase::class.java,
                     DATABASE_NAME
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                     .addCallback(PrepopulateCallback())
                     .build()
                     .also { instance = it }

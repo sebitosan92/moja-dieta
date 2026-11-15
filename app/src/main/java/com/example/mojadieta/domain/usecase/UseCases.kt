@@ -16,13 +16,27 @@ import java.time.LocalDate
 class CalculateNutritionSummaryUseCase {
     operator fun invoke(meals: List<MealEntry>, onlyEaten: Boolean): NutritionSummary {
         val source = if (onlyEaten) meals.filter { it.isEaten } else meals
+        val fiber = source.mapNotNull { it.fiber }
+        val sugar = source.mapNotNull { it.sugar }
+        val salt = source.mapNotNull { it.salt }
+        val anyExtras = fiber.isNotEmpty() || sugar.isNotEmpty() || salt.isNotEmpty()
         return NutritionSummary(
             calories = source.sumOf { it.calories },
             protein = source.sumOf { it.protein },
             carbs = source.sumOf { it.carbs },
-            fat = source.sumOf { it.fat }
+            fat = source.sumOf { it.fat },
+            fiber = fiber.takeIf { it.isNotEmpty() }?.sum(),
+            sugar = sugar.takeIf { it.isNotEmpty() }?.sum(),
+            salt = salt.takeIf { it.isNotEmpty() }?.sum(),
+            extrasIncomplete = anyExtras && source.any { it.fiber == null && it.sugar == null && it.salt == null }
         )
     }
+}
+
+/** Suma znanych wartości albo null, gdy żaden element nie ma danych. */
+fun <T> List<T>.sumKnown(selector: (T) -> Double?): Double? {
+    val known = mapNotNull(selector)
+    return if (known.isEmpty()) null else known.sum()
 }
 
 /** Wynik przeliczenia przepisu: cały przepis i jedna porcja. */
@@ -39,21 +53,36 @@ class CalculateRecipeNutritionUseCase {
         val protein = ingredients.sumOf { it.protein }
         val carbs = ingredients.sumOf { it.carbs }
         val fat = ingredients.sumOf { it.fat }
+        val fiber = ingredients.sumKnown { it.fiber }
+        val sugar = ingredients.sumKnown { it.sugar }
+        val salt = ingredients.sumKnown { it.salt }
+        val incomplete = (fiber != null || sugar != null || salt != null) &&
+            ingredients.any { it.fiber100 == null && it.sugar100 == null && it.salt100 == null }
         return RecipeNutrition(
             total = NutritionSummary(
                 calories = Math.round(kcal).toInt(),
                 protein = round1(protein),
                 carbs = round1(carbs),
-                fat = round1(fat)
+                fat = round1(fat),
+                fiber = fiber?.let(::round1),
+                sugar = sugar?.let(::round1),
+                salt = salt?.let { round2(it) },
+                extrasIncomplete = incomplete
             ),
             perServing = NutritionSummary(
                 calories = Math.round(kcal / portions).toInt(),
                 protein = round1(protein / portions),
                 carbs = round1(carbs / portions),
-                fat = round1(fat / portions)
+                fat = round1(fat / portions),
+                fiber = fiber?.let { round1(it / portions) },
+                sugar = sugar?.let { round1(it / portions) },
+                salt = salt?.let { round2(it / portions) },
+                extrasIncomplete = incomplete
             )
         )
     }
+
+    private fun round2(value: Double): Double = Math.round(value * 100.0) / 100.0
 
     private fun round1(value: Double): Double = Math.round(value * 10.0) / 10.0
 }
@@ -66,7 +95,10 @@ fun MealEntry.scaledTo(newServings: Double): MealEntry {
         calories = Math.round(calories * factor).toInt(),
         protein = Math.round(protein * factor * 10.0) / 10.0,
         carbs = Math.round(carbs * factor * 10.0) / 10.0,
-        fat = Math.round(fat * factor * 10.0) / 10.0
+        fat = Math.round(fat * factor * 10.0) / 10.0,
+        fiber = fiber?.let { Math.round(it * factor * 10.0) / 10.0 },
+        sugar = sugar?.let { Math.round(it * factor * 10.0) / 10.0 },
+        salt = salt?.let { Math.round(it * factor * 100.0) / 100.0 }
     )
 }
 
@@ -151,5 +183,9 @@ private fun Recipe.toMealEntry(date: LocalDate, mealType: MealType, eaten: Boole
     carbs = carbs,
     fat = fat,
     recipeId = id,
-    isEaten = eaten
+    isEaten = eaten,
+    imagePath = null,
+    fiber = fiber,
+    sugar = sugar,
+    salt = salt
 )

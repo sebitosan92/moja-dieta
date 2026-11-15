@@ -5,6 +5,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.lightColorScheme
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
@@ -54,6 +59,47 @@ private val LightColors = lightColorScheme(
     onError = Color.White
 )
 
+private val DarkColors = darkColorScheme(
+    primary = Color(0xFF5FD3A8),
+    onPrimary = Color(0xFF00382A),
+    primaryContainer = Color(0xFF0F513D),
+    onPrimaryContainer = Color(0xFFBDF3DD),
+    secondary = Color(0xFF9CCFBF),
+    onSecondary = Color(0xFF07372B),
+    secondaryContainer = Color(0xFF1C3A31),
+    onSecondaryContainer = Color(0xFFCDEDE2),
+    tertiary = Color(0xFFF2B27A),
+    onTertiary = Color(0xFF4A2600),
+    tertiaryContainer = Color(0xFF5E3A16),
+    onTertiaryContainer = Color(0xFFFFDCC0),
+    background = Color(0xFF101614),
+    onBackground = Color(0xFFE1EAE5),
+    surface = Color(0xFF101614),
+    onSurface = Color(0xFFE1EAE5),
+    surfaceVariant = Color(0xFF2A3631),
+    onSurfaceVariant = Color(0xFFB4C3BC),
+    surfaceContainerLowest = Color(0xFF18211D),
+    surfaceContainerLow = Color(0xFF1A2420),
+    surfaceContainer = Color(0xFF1E2925),
+    surfaceContainerHigh = Color(0xFF26322D),
+    surfaceContainerHighest = Color(0xFF2E3B35),
+    outline = Color(0xFF7D8D86),
+    outlineVariant = Color(0xFF34423C),
+    error = Color(0xFFFF8A80),
+    onError = Color(0xFF5F1412)
+)
+
+/** true, gdy aktywny jest ciemny motyw aplikacji. */
+val LocalDarkTheme = staticCompositionLocalOf { false }
+
+/** Kolory zależne od motywu, których nie ma w ColorScheme. */
+object AppColors {
+    val waterContainer: Color
+        @Composable @ReadOnlyComposable get() = if (LocalDarkTheme.current) Color(0xFF14303F) else WaterContainer
+    val waterTrack: Color
+        @Composable @ReadOnlyComposable get() = if (LocalDarkTheme.current) Color(0xFF0E2330) else Color.White
+}
+
 private val AppTypography = Typography(
     headlineSmall = TextStyle(fontWeight = FontWeight.Bold, fontSize = 24.sp, lineHeight = 30.sp),
     titleLarge = TextStyle(fontWeight = FontWeight.SemiBold, fontSize = 22.sp, lineHeight = 28.sp),
@@ -75,11 +121,13 @@ private val AppShapes = Shapes(
 )
 
 @Composable
-fun MojaDietaTheme(content: @Composable () -> Unit) {
-    MaterialTheme(
-        colorScheme = LightColors,
-        typography = AppTypography,
-        shapes = AppShapes,
-        content = content
-    )
+fun MojaDietaTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
+    CompositionLocalProvider(LocalDarkTheme provides darkTheme) {
+        MaterialTheme(
+            colorScheme = if (darkTheme) DarkColors else LightColors,
+            typography = AppTypography,
+            shapes = AppShapes,
+            content = content
+        )
+    }
 }

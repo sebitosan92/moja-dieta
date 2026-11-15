@@ -1,5 +1,7 @@
 package com.example.mojadieta.ui.recipes
 
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -118,6 +120,14 @@ fun RecipesScreen(
             ) {
                 item {
                     FilterChip(
+                        selected = state.favoritesOnly,
+                        onClick = viewModel::toggleFavoritesOnly,
+                        label = { Text("Ulubione") },
+                        leadingIcon = { Icon(Icons.Filled.Star, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                    )
+                }
+                item {
+                    FilterChip(
                         selected = state.category == null,
                         onClick = { viewModel.onCategorySelected(null) },
                         label = { Text("Wszystkie") }
@@ -131,12 +141,27 @@ fun RecipesScreen(
                     )
                 }
             }
+            if (state.allTags.isNotEmpty()) {
+                Spacer(Modifier.height(4.dp))
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(state.allTags) { tag ->
+                        FilterChip(
+                            selected = state.tag == tag,
+                            onClick = { viewModel.onTagSelected(tag) },
+                            label = { Text("#$tag") }
+                        )
+                    }
+                }
+            }
             if (!state.isLoading && state.recipes.isEmpty()) {
                 EmptyState(
                     icon = Icons.Outlined.Restaurant,
                     title = if (state.totalCount == 0) "Brak przepisów" else "Nic nie znaleziono",
                     message = if (state.totalCount == 0) "Dodaj pierwszy przepis przyciskiem +."
-                    else "Zmień frazę wyszukiwania lub kategorię."
+                    else "Zmień frazę wyszukiwania, kategorię lub filtr."
                 )
             } else {
                 LazyColumn(
@@ -144,7 +169,11 @@ fun RecipesScreen(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     items(state.recipes, key = { it.id }) { recipe ->
-                        RecipeCard(recipe = recipe, onClick = { onRecipeClick(recipe.id) })
+                        RecipeCard(
+                            recipe = recipe,
+                            onClick = { onRecipeClick(recipe.id) },
+                            onToggleFavorite = { viewModel.toggleFavorite(recipe) }
+                        )
                     }
                 }
             }
@@ -153,7 +182,7 @@ fun RecipesScreen(
 }
 
 @Composable
-private fun RecipeCard(recipe: Recipe, onClick: () -> Unit) {
+private fun RecipeCard(recipe: Recipe, onClick: () -> Unit, onToggleFavorite: () -> Unit) {
     Card(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
@@ -195,15 +224,24 @@ private fun RecipeCard(recipe: Recipe, onClick: () -> Unit) {
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    recipe.category.label,
+                    (listOf(recipe.category.label) + recipe.tags.take(3).map { "#$it" }).joinToString(" · "),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.secondary
+                    color = MaterialTheme.colorScheme.secondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
                 Spacer(Modifier.height(6.dp))
                 MacroInlineRow(recipe.protein, recipe.carbs, recipe.fat)
             }
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(4.dp))
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                IconButton(onClick = onToggleFavorite, modifier = Modifier.size(36.dp)) {
+                    Icon(
+                        if (recipe.favorite) Icons.Filled.Star else Icons.Outlined.StarBorder,
+                        contentDescription = if (recipe.favorite) "Usuń z ulubionych" else "Dodaj do ulubionych",
+                        tint = if (recipe.favorite) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
                 Icon(
                     Icons.Outlined.LocalFireDepartment,
                     contentDescription = null,

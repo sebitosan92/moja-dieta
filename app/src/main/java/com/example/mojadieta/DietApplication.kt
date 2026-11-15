@@ -9,6 +9,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import com.example.mojadieta.update.UpdateCheckWorker
 import com.example.mojadieta.update.UpdateNotifier
+import com.example.mojadieta.reminders.ReminderScheduler
 
 class DietApplication : Application() {
     lateinit var container: AppContainer
@@ -18,7 +19,12 @@ class DietApplication : Application() {
         super.onCreate()
         container = AppContainer(this)
         UpdateNotifier.createChannel(this)
+        ReminderScheduler.createChannels(this)
         UpdateCheckWorker.schedule(this)
+        // Przypomnienia ustawiane od nowa przy każdej zmianie ustawień (i przy starcie).
+        appScope.launch {
+            container.settingsRepository.settings.collect { ReminderScheduler.rescheduleAll(this@DietApplication, it) }
+        }
         appScope.launch { runCatching { container.cleanupImages() } }
         DietWidgetUpdater.start(this, container, appScope)
     }

@@ -23,7 +23,14 @@ data class RecipeEntity(
     @ColumnInfo(defaultValue = "1") val servings: Int = 1,
     @ColumnInfo(defaultValue = "0") val autoNutrition: Boolean = false,
     // Wersja 3 bazy:
-    val imagePath: String? = null
+    val imagePath: String? = null,
+    // Wersja 4 bazy:
+    @ColumnInfo(defaultValue = "0") val favorite: Boolean = false,
+    /** Tagi rozdzielone przecinkami. */
+    @ColumnInfo(defaultValue = "") val tags: String = "",
+    val fiber: Double? = null,
+    val sugar: Double? = null,
+    val salt: Double? = null
 )
 
 /** Składnik przepisu z gramaturą i wartościami na 100 g (wersja 2 bazy). */
@@ -48,7 +55,11 @@ data class RecipeIngredientEntity(
     val kcal100: Double,
     val protein100: Double,
     val carbs100: Double,
-    val fat100: Double
+    val fat100: Double,
+    // Wersja 4 bazy:
+    val fiber100: Double? = null,
+    val sugar100: Double? = null,
+    val salt100: Double? = null
 )
 
 /** Własny produkt użytkownika (wartości na 100 g). */
@@ -61,7 +72,11 @@ data class CustomProductEntity(
     val carbs: Double,
     val fat: Double,
     // Wersja 3 bazy: kod kreskowy zeskanowanego produktu
-    val barcode: String? = null
+    val barcode: String? = null,
+    // Wersja 4 bazy:
+    val fiber: Double? = null,
+    val sugar: Double? = null,
+    val salt: Double? = null
 )
 
 /** Pomiar wagi (wersja 3 bazy). externalId = id rekordu z Health Connect (do pomijania duplikatów). */
@@ -96,7 +111,11 @@ data class MealEntryEntity(
     val eaten: Boolean,
     // Wersja 3 bazy:
     @ColumnInfo(defaultValue = "1") val servings: Double = 1.0,
-    val imagePath: String? = null
+    val imagePath: String? = null,
+    // Wersja 4 bazy:
+    val fiber: Double? = null,
+    val sugar: Double? = null,
+    val salt: Double? = null
 )
 
 @Entity(
@@ -138,4 +157,102 @@ data class NoteEntity(
     val content: String,
     val createdAt: Long,
     val updatedAt: Long
+)
+
+// ---------------- Wersja 4 bazy ----------------
+
+@Entity(
+    tableName = "activities",
+    indices = [Index(value = ["externalId"], unique = true), Index("date")]
+)
+data class ActivityEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val date: Long,
+    val startMillis: Long,
+    val type: String,
+    val title: String?,
+    val durationMin: Int,
+    val intensity: String,
+    val distanceKm: Double?,
+    val avgHeartRate: Int?,
+    val watts: Int?,
+    val calories: Int,
+    val note: String,
+    val source: String,
+    val externalId: String?
+)
+
+@Entity(tableName = "activity_templates")
+data class ActivityTemplateEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    val type: String,
+    val durationMin: Int,
+    val intensity: String,
+    val distanceKm: Double?
+)
+
+@Entity(tableName = "planned_activities", indices = [Index("date")])
+data class PlannedActivityEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val date: Long,
+    val type: String,
+    val durationMin: Int,
+    val intensity: String,
+    val note: String
+)
+
+@Entity(tableName = "shopping_items")
+data class ShoppingItemEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    val quantity: String,
+    val groupName: String,
+    val checked: Boolean,
+    val manual: Boolean,
+    val position: Int
+)
+
+@Entity(
+    tableName = "body_metrics",
+    indices = [Index(value = ["externalId"], unique = true), Index("date")]
+)
+data class BodyMetricEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val date: Long,
+    val timeMillis: Long,
+    val type: String,
+    val value: Double,
+    val source: String,
+    val externalId: String?
+)
+
+/** Kroki i aktywne kalorie z Health Connect, jeden wiersz na dzień. */
+@Entity(tableName = "daily_steps")
+data class DailyStepsEntity(
+    @PrimaryKey val date: Long,
+    val steps: Int,
+    val activeCalories: Int,
+    val distanceKm: Double
+)
+
+/** Statystyka użycia produktu w składnikach i dzienniku. Klucz = nazwa po normalizacji. */
+@Entity(tableName = "product_usage")
+data class ProductUsageEntity(
+    @PrimaryKey val key: String,
+    val name: String,
+    val count: Int,
+    val lastUsed: Long,
+    val favorite: Boolean
+)
+
+/** Suma dnia (wynik zapytania). */
+data class DayTotalsRow(
+    val date: Long,
+    val eatenCalories: Int,
+    val eatenProtein: Double,
+    val eatenCarbs: Double,
+    val eatenFat: Double,
+    val entries: Int,
+    val notEaten: Int
 )

@@ -180,6 +180,16 @@ private fun RecipeForm(
                 }
             }
 
+            OutlinedTextField(
+                value = form.tags,
+                onValueChange = viewModel::onTagsChange,
+                label = { Text("Tagi (opcjonalnie)") },
+                placeholder = { Text("np. szybkie, wege, na zimno") },
+                supportingText = { Text("Oddziel przecinkami – po tagach można filtrować listę przepisów") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+
             IngredientsSection(form = form, viewModel = viewModel)
 
             NutritionSection(form = form, viewModel = viewModel)
@@ -378,6 +388,19 @@ private fun NutritionSection(form: RecipeFormState, viewModel: RecipeEditViewMod
                             ComputedValue("${formatGrams(perServing?.carbs ?: 0.0)} g", "Węglowodany", CarbsColor)
                             ComputedValue("${formatGrams(perServing?.fat ?: 0.0)} g", "Tłuszcze", FatColor)
                         }
+                        val extras = listOfNotNull(
+                            perServing?.fiber?.let { "błonnik ${formatGrams(it)} g" },
+                            perServing?.sugar?.let { "cukry ${formatGrams(it)} g" },
+                            perServing?.salt?.let { "sól ${formatGrams(it)} g" }
+                        )
+                        if (extras.isNotEmpty()) {
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                extras.joinToString(" · ") + if (perServing?.extrasIncomplete == true) " (niepełne dane)" else "",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
                         if (form.servings > 1 && nutrition != null) {
                             Spacer(Modifier.height(6.dp))
                             Text(
@@ -422,6 +445,11 @@ private fun NutritionSection(form: RecipeFormState, viewModel: RecipeEditViewMod
                         error = if (showErrors) form.fatError else null,
                         modifier = Modifier.weight(1f)
                     )
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FormNumberField(label = "Błonnik (g)", value = form.fiber, onValueChange = viewModel::onFiberChange, error = null, modifier = Modifier.weight(1f))
+                    FormNumberField(label = "Cukry (g)", value = form.sugar, onValueChange = viewModel::onSugarChange, error = null, modifier = Modifier.weight(1f))
+                    FormNumberField(label = "Sól (g)", value = form.salt, onValueChange = viewModel::onSaltChange, error = null, modifier = Modifier.weight(1f))
                 }
             }
         }

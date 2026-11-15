@@ -11,35 +11,53 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
 data class RecipesUiState(
     val query: String = "",
     val category: RecipeCategory? = null,
     val recipes: List<Recipe> = emptyList(),
     val totalCount: Int = 0,
-    val isLoading: Boolean = true
+    val isLoading: Boolean = true,
+    val favoritesOnly: Boolean = false,
+    val tag: String? = null,
+    val allTags: List<String> = emptyList()
 )
 
-class RecipesViewModel(recipeRepository: RecipeRepository) : ViewModel() {
+class RecipesViewModel(private val recipeRepository: RecipeRepository) : ViewModel() {
 
     private val query = MutableStateFlow("")
     private val category = MutableStateFlow<RecipeCategory?>(null)
+    private val favoritesOnly = MutableStateFlow(false)
+    private val tag = MutableStateFlow<String?>(null)
 
     val uiState: StateFlow<RecipesUiState> = combine(
         recipeRepository.observeRecipes(),
         query,
-        category
-    ) { recipes, q, cat ->
+        category,
+        favoritesOnly,
+        tag
+    ) { recipes, q, cat, favs, t ->
+        val needle = q.trim()
         val filtered = recipes
             .filter { cat == null || it.category == cat }
-            .filter { q.isBlank() || it.name.contains(q.trim(), ignoreCase = true) }
-            .sortedWith { a, b -> PolishCollator.compare(a.name, b.name) }
+            .filter { !favs || it.favorite }
+            .filter { t == null || t in it.tags }
+            .filter {
+                needle.isEmpty() || it.name.contains(needle, ignoreCase = true) ||
+                    it.tags.any { tg -> tg.contains(needle, ignoreCase = true) }
+            }
+            // Ulubione na górze, potem alfabetycznie.
+            .sortedWith(compareByDescending<Recipe> { it.favorite }.thenComparator { a, b -> PolishCollator.compare(a.name, b.name) })
         RecipesUiState(
             query = q,
             category = cat,
             recipes = filtered,
             totalCount = recipes.size,
-            isLoading = false
+            isLoading = false,
+            favoritesOnly = favs,
+            tag = t,
+            allTags = recipes.flatMap { it.tags }.distinct().sortedWith(PolishCollator)
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), RecipesUiState())
 
@@ -49,5 +67,17 @@ class RecipesViewModel(recipeRepository: RecipeRepository) : ViewModel() {
 
     fun onCategorySelected(value: RecipeCategory?) {
         category.value = value
+    }
+
+    fun toggleFavoritesOnly() {
+        favoritesOnly.value = !favoritesOnly.value
+    }
+
+    fun onTagSelected(value: String?) {
+        tag.value = if (tag.value == value) null else value
+    }
+
+    fun toggleFavorite(recipe: Recipe) {
+        viewModelScope.launch { recipeRepository.setFavorite(recipe.id, !recipe.favorite) }
     }
 }

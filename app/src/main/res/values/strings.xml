@@ -1,6 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Moja Dieta</string>
-    <string name="widget_name">Moja Dieta – woda i kalorie</string>
-    <string name="widget_description">Kalorie z dzisiejszego dnia i szybkie dodawanie wody</string>
+    <string name="widget_name">Moja Dieta – dzień</string>
+    <string name="widget_description">Kalorie, woda, waga i kroki z dzisiejszego dnia</string>
+    <string name="water_widget_name">Moja Dieta – woda</string>
+    <string name="water_widget_description">Mały widżet: woda i szybkie +250 ml</string>
+    <string name="tile_water">Woda +250 ml</string>
+    <string name="shortcut_water_short">+250 ml wody</string>
+    <string name="shortcut_water_long">Dodaj 250 ml wody</string>
+    <string name="shortcut_scan_short">Skanuj kod</string>
+    <string name="shortcut_scan_long">Skanuj kod kreskowy produktu</string>
+    <string name="shortcut_weight_short">Dodaj wagę</string>
+    <string name="shortcut_weight_long">Dodaj pomiar wagi</string>
+    <string name="shortcut_activity_short">Dodaj trening</string>
+    <string name="shortcut_activity_long">Dodaj trening lub aktywność</string>
 </resources>

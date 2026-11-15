@@ -35,6 +35,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import com.example.mojadieta.domain.model.DayTotals
 import java.time.LocalDate
 
 class RecipeRepositoryImpl(private val dao: RecipeDao) : RecipeRepository {
@@ -64,6 +65,14 @@ class RecipeRepositoryImpl(private val dao: RecipeDao) : RecipeRepository {
 
     override suspend fun imagePaths(): List<String> = dao.imagePaths()
 
+    override suspend fun setFavorite(id: Long, favorite: Boolean) = dao.setFavorite(id, favorite)
+
+    override suspend fun getIngredientsFor(recipeIds: Collection<Long>): Map<Long, List<RecipeIngredient>> =
+        if (recipeIds.isEmpty()) emptyMap()
+        else dao.getIngredientsFor(recipeIds.toList())
+            .sortedWith(compareBy({ it.recipeId }, { it.position }))
+            .groupBy({ it.recipeId }, { it.toDomain() })
+
     override suspend fun saveRecipeWithIngredients(recipe: Recipe, ingredients: List<RecipeIngredient>): Long =
         dao.saveWithIngredients(
             recipe.toEntity(),
@@ -83,7 +92,10 @@ class ProductRepositoryImpl(private val dao: CustomProductDao) : ProductReposito
                 protein = product.protein,
                 carbs = product.carbs,
                 fat = product.fat,
-                barcode = product.barcode
+                barcode = product.barcode,
+                fiber = product.fiber,
+                sugar = product.sugar,
+                salt = product.salt
             )
         )
         return product.copy(name = product.name.trim(), customId = id)
@@ -113,6 +125,21 @@ class DiaryRepositoryImpl(private val dao: MealEntryDao) : DiaryRepository {
     override suspend fun updateMeal(entry: MealEntry) = dao.update(entry.toEntity())
 
     override suspend fun imagePaths(): List<String> = dao.imagePaths()
+
+    override suspend fun getMeals(date: LocalDate, mealType: MealType): List<MealEntry> =
+        dao.getByDateAndMeal(date.toEpochDay(), mealType.name).map { it.toDomain() }
+
+    override suspend fun setEatenForMeal(date: LocalDate, mealType: MealType, eaten: Boolean) =
+        dao.setEatenForMeal(date.toEpochDay(), mealType.name, eaten)
+
+    override suspend fun hasEntries(date: LocalDate, mealType: MealType): Boolean =
+        dao.countForMeal(date.toEpochDay(), mealType.name) > 0
+
+    override fun observeTotals(start: LocalDate, end: LocalDate): Flow<List<DayTotals>> =
+        dao.observeTotals(start.toEpochDay(), end.toEpochDay()).map { rows -> rows.map { it.toDomain() } }
+
+    override suspend fun getTotals(start: LocalDate, end: LocalDate): List<DayTotals> =
+        dao.getTotals(start.toEpochDay(), end.toEpochDay()).map { it.toDomain() }
 }
 
 class WeightRepositoryImpl(
@@ -149,6 +176,11 @@ class WeightRepositoryImpl(
         return added
     }
 
+    override suspend fun hasEntryOn(date: LocalDate): Boolean = dao.countOn(date.toEpochDay()) > 0
+
+    override suspend fun getBetween(start: LocalDate, end: LocalDate): List<WeightEntry> =
+        dao.getBetween(start.toEpochDay(), end.toEpochDay()).map { it.toDomain() }
+
     /** Najnowsza waga trafia też do profilu, żeby kalkulator celu był aktualny. */
     private suspend fun syncProfileWeight() {
         dao.observeLatest().first()?.let { profileRepository.updateWeight(it.weightKg) }
@@ -173,6 +205,9 @@ class PlannerRepositoryImpl(private val dao: PlannedMealDao) : PlannerRepository
         )
 
     override suspend fun deletePlannedMeal(id: Long) = dao.deleteById(id)
+
+    override suspend fun countPlanned(start: LocalDate, end: LocalDate): Int =
+        dao.countBetween(start.toEpochDay(), end.toEpochDay())
 }
 
 class WaterRepositoryImpl(private val dao: WaterDao) : WaterRepository {
@@ -192,6 +227,25 @@ class WaterRepositoryImpl(private val dao: WaterDao) : WaterRepository {
 
     override suspend fun setGoal(date: LocalDate, goalMl: Int) =
         dao.setGoal(date.toEpochDay(), goalMl)
+
+    override suspend fun getWater(date: LocalDate): WaterIntake {
+        val day = date.toEpochDay()
+        val entity = dao.get(day)
+        return WaterIntake(
+            date = date,
+            amountMl = entity?.amountMl ?: 0,
+            goalMl = entity?.goalMl ?: dao.getLatestGoal(day) ?: WaterIntake.DEFAULT_GOAL_ML
+        )
+    }
+
+    override fun observeRange(start: LocalDate, end: LocalDate): Flow<List<WaterIntake>> =
+        dao.observeBetween(start.toEpochDay(), end.toEpochDay()).map { list ->
+            list.map { WaterIntake(LocalDate.ofEpochDay(it.date), it.amountMl, it.goalMl) }
+        }
+
+    override suspend fun getRange(start: LocalDate, end: LocalDate): List<WaterIntake> =
+        dao.getBetween(start.toEpochDay(), end.toEpochDay())
+            .map { WaterIntake(LocalDate.ofEpochDay(it.date), it.amountMl, it.goalMl) }
 }
 
 class NoteRepositoryImpl(private val dao: NoteDao) : NoteRepository {

@@ -68,7 +68,7 @@ private val SplashAccent = Color(0xFFCDF7E5)
  * dzięki czemu przejście jest płynne.
  */
 @Composable
-fun SplashScreen(onFinished: () -> Unit) {
+fun SplashScreen(short: Boolean = false, onFinished: () -> Unit) {
     val currentOnFinished by rememberUpdatedState(onFinished)
 
     val logoScale = remember { Animatable(0.6f) }
@@ -78,7 +78,7 @@ fun SplashScreen(onFinished: () -> Unit) {
     val footerAlpha = remember { Animatable(0f) }
     val quoteAlpha = remember { Animatable(0f) }
     val context = LocalContext.current
-    val quote = rememberSaveable { MotivationalQuotes.next(context) }
+    val quote = rememberSaveable { if (short) "" else MotivationalQuotes.next(context) }
 
     LaunchedEffect(Unit) {
         launch {
@@ -96,7 +96,8 @@ fun SplashScreen(onFinished: () -> Unit) {
         launch { quoteAlpha.animateTo(1f, tween(700, easing = FastOutSlowInEasing)) }
         delay(300)
         launch { footerAlpha.animateTo(1f, tween(500)) }
-        delay(2600)
+        // Krótka wersja (bez cytatu) kończy się szybciej.
+        delay(if (short) 500 else 2600)
         currentOnFinished()
     }
 
@@ -207,8 +208,8 @@ fun SplashScreen(onFinished: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.padding(top = 24.dp, bottom = 40.dp)
         ) {
-            // Cytat motywujący – inny przy każdym uruchomieniu.
-            Column(
+            // Cytat motywujący – inny przy każdym uruchomieniu (w pełnej wersji).
+            if (!short) Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier
                     .padding(horizontal = 36.dp)

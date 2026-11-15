@@ -5,6 +5,9 @@ import androidx.lifecycle.viewModelScope
 import com.example.mojadieta.data.health.HealthConnectManager
 import com.example.mojadieta.di.AppContainer
 import com.example.mojadieta.domain.model.WeightEntry
+import com.example.mojadieta.domain.model.BodyMetric
+import com.example.mojadieta.domain.model.BodyMetricType
+import com.example.mojadieta.data.repository.BodyMetricRepository
 import com.example.mojadieta.domain.repository.WeightRepository
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,7 +30,8 @@ data class HealthConnectState(
 
 data class WeightUiState(
     val entries: List<WeightEntry> = emptyList(),
-    val healthConnect: HealthConnectState = HealthConnectState()
+    val healthConnect: HealthConnectState = HealthConnectState(),
+    val metrics: List<BodyMetric> = emptyList()
 ) {
     val latest: WeightEntry? get() = entries.firstOrNull()
 
@@ -42,13 +46,18 @@ data class WeightUiState(
 class WeightViewModel(
     private val weightRepository: WeightRepository,
     private val healthConnect: HealthConnectManager,
-    private val container: AppContainer
+    private val container: AppContainer,
+    private val bodyMetricRepository: BodyMetricRepository
 ) : ViewModel() {
 
     private val hcState = MutableStateFlow(HealthConnectState())
 
-    val state: StateFlow<WeightUiState> = combine(weightRepository.observeEntries(), hcState) { entries, hc ->
-        WeightUiState(entries = entries, healthConnect = hc)
+    val state: StateFlow<WeightUiState> = combine(
+        weightRepository.observeEntries(),
+        hcState,
+        bodyMetricRepository.observeAll()
+    ) { entries, hc, metrics ->
+        WeightUiState(entries = entries, healthConnect = hc, metrics = metrics)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), WeightUiState())
 
     private val _messages = MutableSharedFlow<String>(extraBufferCapacity = 4)
@@ -73,7 +82,7 @@ class WeightViewModel(
 
     /** Wynik systemowego okna zgody Health Connect. */
     fun onPermissionResult(granted: Set<String>) {
-        if (granted.containsAll(permissions)) {
+        if (granted.any { it in healthConnect.weightPermissions || it in healthConnect.bodyPermissions }) {
             refreshHealthConnect(syncIfPossible = true, announce = true)
         } else {
             _messages.tryEmit("Bez zgody na odczyt wagi nie da się pobrać pomiarów z Health Connect.")
@@ -110,6 +119,17 @@ class WeightViewModel(
             weightRepository.addManual(date, weightKg)
             _messages.emit("Zapisano pomiar")
         }
+    }
+
+    fun addMetric(type: BodyMetricType, value: Double, date: LocalDate) {
+        viewModelScope.launch {
+            bodyMetricRepository.addManual(type, value, date)
+            _messages.emit("Zapisano: ${type.label}")
+        }
+    }
+
+    fun deleteMetric(metric: BodyMetric) {
+        viewModelScope.launch { bodyMetricRepository.delete(metric.id) }
     }
 
     fun delete(entry: WeightEntry) {

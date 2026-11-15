@@ -77,3 +77,24 @@ fun formatServings(servings: Double): String {
     }
     return "$text $word"
 }
+
+/** Polska odmiana: plural(1, "dzień", "dni", "dni"), plural(3, "trening", "treningi", "treningów"). */
+fun plural(n: Int, one: String, few: String, many: String): String = when {
+    n == 1 -> one
+    n % 10 in 2..4 && n % 100 !in 12..14 -> few
+    else -> many
+}
+
+/** „45 min”, „1 h 20 min”. */
+fun formatMinutes(minutes: Int): String = when {
+    minutes < 60 -> "$minutes min"
+    minutes % 60 == 0 -> "${minutes / 60} h"
+    else -> "${minutes / 60} h ${minutes % 60} min"
+}
+
+/** „8 412” – liczba z odstępem tysięcy. */
+fun formatThousands(value: Int): String = String.format(PolishLocale, "%,d", value).replace(' ', ' ')
+
+fun formatClock(millis: Long): String =
+    Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).toLocalTime()
+        .format(DateTimeFormatter.ofPattern("HH:mm"))

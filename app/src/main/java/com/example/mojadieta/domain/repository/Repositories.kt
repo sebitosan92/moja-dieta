@@ -1,5 +1,6 @@
 package com.example.mojadieta.domain.repository
 
+import com.example.mojadieta.domain.model.DayTotals
 import com.example.mojadieta.domain.model.FoodProduct
 import com.example.mojadieta.domain.model.MealEntry
 import com.example.mojadieta.domain.model.RecipeIngredient
@@ -26,6 +27,9 @@ interface RecipeRepository {
     /** Zapisuje przepis razem ze składnikami (w jednej transakcji) i zwraca id przepisu. */
     suspend fun saveRecipeWithIngredients(recipe: Recipe, ingredients: List<RecipeIngredient>): Long
     suspend fun imagePaths(): List<String>
+    suspend fun setFavorite(id: Long, favorite: Boolean)
+    /** Składniki wielu przepisów naraz (id przepisu → składniki). */
+    suspend fun getIngredientsFor(recipeIds: Collection<Long>): Map<Long, List<RecipeIngredient>>
 }
 
 interface ProductRepository {
@@ -44,6 +48,8 @@ interface WeightRepository {
     suspend fun delete(id: Long)
     /** Zapisuje pomiary z Health Connect, pomijając już zaimportowane. Zwraca liczbę nowych. */
     suspend fun importExternal(entries: List<WeightEntry>): Int
+    suspend fun hasEntryOn(date: LocalDate): Boolean
+    suspend fun getBetween(start: LocalDate, end: LocalDate): List<WeightEntry>
 }
 
 interface ProfileRepository {
@@ -62,6 +68,11 @@ interface DiaryRepository {
     suspend fun deleteMeal(id: Long)
     suspend fun updateMeal(entry: MealEntry)
     suspend fun imagePaths(): List<String>
+    suspend fun getMeals(date: LocalDate, mealType: MealType): List<MealEntry>
+    suspend fun setEatenForMeal(date: LocalDate, mealType: MealType, eaten: Boolean)
+    suspend fun hasEntries(date: LocalDate, mealType: MealType): Boolean
+    fun observeTotals(start: LocalDate, end: LocalDate): Flow<List<DayTotals>>
+    suspend fun getTotals(start: LocalDate, end: LocalDate): List<DayTotals>
 }
 
 interface PlannerRepository {
@@ -69,12 +80,16 @@ interface PlannerRepository {
     suspend fun getPlannedMeals(start: LocalDate, end: LocalDate): List<PlannedMeal>
     suspend fun addPlannedMeal(date: LocalDate, mealType: MealType, recipeId: Long): Long
     suspend fun deletePlannedMeal(id: Long)
+    suspend fun countPlanned(start: LocalDate, end: LocalDate): Int
 }
 
 interface WaterRepository {
     fun observeWater(date: LocalDate): Flow<WaterIntake>
     suspend fun changeAmount(date: LocalDate, deltaMl: Int)
     suspend fun setGoal(date: LocalDate, goalMl: Int)
+    suspend fun getWater(date: LocalDate): WaterIntake
+    fun observeRange(start: LocalDate, end: LocalDate): Flow<List<WaterIntake>>
+    suspend fun getRange(start: LocalDate, end: LocalDate): List<WaterIntake>
 }
 
 interface NoteRepository {

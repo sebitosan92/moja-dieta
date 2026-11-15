@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
@@ -53,6 +54,24 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.automirrored.outlined.DirectionsRun
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.ShoppingCart
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.ui.text.input.KeyboardType
+import com.example.mojadieta.domain.model.ActivityType
+import com.example.mojadieta.domain.model.Intensity
+import com.example.mojadieta.domain.model.PlannedActivity
+import com.example.mojadieta.ui.activity.icon
+import com.example.mojadieta.ui.util.formatMinutes
 import com.example.mojadieta.domain.model.MealType
 import com.example.mojadieta.domain.model.PlannedMeal
 import com.example.mojadieta.domain.model.Recipe
@@ -69,12 +88,16 @@ import java.time.LocalDate
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PlannerScreen(viewModel: PlannerViewModel = viewModel(factory = AppViewModelProvider.Factory)) {
+fun PlannerScreen(
+    onOpenShopping: () -> Unit = {},
+    viewModel: PlannerViewModel = viewModel(factory = AppViewModelProvider.Factory)
+) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     // Dzień (epochDay), dla którego otwarto arkusz planowania; null = zamknięty.
     var planForEpochDay by rememberSaveable { mutableStateOf<Long?>(null) }
     var showDatePicker by rememberSaveable { mutableStateOf(false) }
+    var planActivityForEpochDay by rememberSaveable { mutableStateOf<Long?>(null) }
 
     if (showDatePicker) {
         DateJumpDialog(
@@ -99,6 +122,9 @@ fun PlannerScreen(viewModel: PlannerViewModel = viewModel(factory = AppViewModel
                 actions = {
                     if (state.weekStart != LocalDate.now().startOfWeek()) {
                         TextButton(onClick = viewModel::currentWeek) { Text("Ten tydzień") }
+                    }
+                    IconButton(onClick = onOpenShopping) {
+                        Icon(Icons.Outlined.ShoppingCart, contentDescription = "Lista zakupów")
                     }
                     IconButton(onClick = { showDatePicker = true }) {
                         Icon(Icons.Outlined.CalendarMonth, contentDescription = "Wybierz tydzień z kalendarza")
@@ -131,11 +157,25 @@ fun PlannerScreen(viewModel: PlannerViewModel = viewModel(factory = AppViewModel
                 DayPlanCard(
                     day = day,
                     onAddClick = { planForEpochDay = day.date.toEpochDay() },
+                    onAddActivity = { planActivityForEpochDay = day.date.toEpochDay() },
                     onRemove = viewModel::removePlannedMeal,
+                    onRemoveActivity = viewModel::removePlannedActivity,
+                    onCompleteActivity = viewModel::completePlannedActivity,
                     onCopyToDiary = { viewModel.copyDayToDiary(day.date) }
                 )
             }
         }
+    }
+
+    planActivityForEpochDay?.let { epochDay ->
+        PlanActivityDialog(
+            date = LocalDate.ofEpochDay(epochDay),
+            onDismiss = { planActivityForEpochDay = null },
+            onSave = {
+                viewModel.addPlannedActivity(it)
+                planActivityForEpochDay = null
+            }
+        )
     }
 
     planForEpochDay?.let { epochDay ->
@@ -195,7 +235,10 @@ private fun WeekHeader(
 private fun DayPlanCard(
     day: PlannerDay,
     onAddClick: () -> Unit,
+    onAddActivity: () -> Unit,
     onRemove: (PlannedMeal) -> Unit,
+    onRemoveActivity: (PlannedActivity) -> Unit,
+    onCompleteActivity: (PlannedActivity) -> Unit,
     onCopyToDiary: () -> Unit
 ) {
     val isToday = day.date == LocalDate.now()
@@ -303,12 +346,55 @@ private fun DayPlanCard(
                 }
             }
 
+            if (day.activities.isNotEmpty()) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                Text(
+                    "Treningi",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 8.dp, start = 30.dp)
+                )
+                day.activities.forEach { planned ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            planned.type.icon(),
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.tertiary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "${planned.type.label} · ${formatMinutes(planned.durationMin)}",
+                                style = MaterialTheme.typography.bodyLarge,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            if (planned.note.isNotBlank()) {
+                                Text(planned.note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                        IconButton(onClick = { onCompleteActivity(planned) }) {
+                            Icon(Icons.Outlined.Check, contentDescription = "Zrobione – zapisz w Aktywności", tint = MaterialTheme.colorScheme.primary)
+                        }
+                        IconButton(onClick = { onRemoveActivity(planned) }) {
+                            Icon(Icons.Outlined.Close, contentDescription = "Usuń z planu", modifier = Modifier.size(18.dp))
+                        }
+                    }
+                }
+            }
+
             Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(0.dp), verticalAlignment = Alignment.CenterVertically) {
                 TextButton(onClick = onAddClick) {
                     Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("Zaplanuj")
+                    Text("Posiłek")
+                }
+                TextButton(onClick = onAddActivity) {
+                    Icon(Icons.AutoMirrored.Outlined.DirectionsRun, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Trening")
                 }
                 Spacer(Modifier.weight(1f))
                 OutlinedButton(onClick = onCopyToDiary, enabled = !day.isEmpty) {
@@ -355,3 +441,70 @@ private fun PlanMealSheet(
         }
     }
 }
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+private fun PlanActivityDialog(date: LocalDate, onDismiss: () -> Unit, onSave: (PlannedActivity) -> Unit) {
+    var type by rememberSaveable { mutableStateOf(ActivityType.CYCLING) }
+    var durationText by rememberSaveable { mutableStateOf("45") }
+    var intensity by rememberSaveable { mutableStateOf(Intensity.MODERATE) }
+    var note by rememberSaveable { mutableStateOf("") }
+    val duration = durationText.toIntOrNull()?.takeIf { it in 1..600 }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Zaplanuj trening – ${date.dayMonth()}") },
+        text = {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.verticalScrollCompat()
+            ) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    ActivityType.entries.forEach { option ->
+                        FilterChip(
+                            selected = option == type,
+                            onClick = { type = option },
+                            label = { Text(option.label) }
+                        )
+                    }
+                }
+                OutlinedTextField(
+                    value = durationText,
+                    onValueChange = { input -> durationText = input.filter { it.isDigit() }.take(3) },
+                    label = { Text("Czas") },
+                    suffix = { Text("min") },
+                    singleLine = true,
+                    isError = duration == null,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                )
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    Intensity.entries.forEachIndexed { index, option ->
+                        SegmentedButton(
+                            selected = option == intensity,
+                            onClick = { intensity = option },
+                            shape = SegmentedButtonDefaults.itemShape(index, Intensity.entries.size)
+                        ) { Text(option.label, maxLines = 1) }
+                    }
+                }
+                OutlinedTextField(
+                    value = note,
+                    onValueChange = { note = it.take(120) },
+                    label = { Text("Notatka (opcjonalnie)") },
+                    singleLine = true
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = duration != null,
+                onClick = {
+                    duration?.let { onSave(PlannedActivity(date = date, type = type, durationMin = it, intensity = intensity, note = note.trim())) }
+                }
+            ) { Text("Zaplanuj") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Anuluj") } }
+    )
+}
+
+@Composable
+private fun Modifier.verticalScrollCompat(): Modifier =
+    this.verticalScroll(androidx.compose.foundation.rememberScrollState())

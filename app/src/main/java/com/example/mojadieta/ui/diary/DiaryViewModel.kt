@@ -4,11 +4,17 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.mojadieta.data.food.ProductLookup
 import com.example.mojadieta.data.images.ImageStorage
+import com.example.mojadieta.data.repository.ActivityRepository
+import com.example.mojadieta.data.repository.ProductUsageRepository
+import com.example.mojadieta.data.settings.SettingsRepository
+import com.example.mojadieta.data.stats.DayStatus
+import com.example.mojadieta.data.stats.dayStatus
 import com.example.mojadieta.domain.model.DailyGoal
 import com.example.mojadieta.domain.model.FoodProduct
 import com.example.mojadieta.domain.model.MealEntry
 import com.example.mojadieta.domain.model.MealType
 import com.example.mojadieta.domain.model.NutritionSummary
+import com.example.mojadieta.domain.model.ProductUsage
 import com.example.mojadieta.domain.model.Recipe
 import com.example.mojadieta.domain.model.RecipeIngredient
 import com.example.mojadieta.domain.model.WaterIntake
@@ -19,16 +25,22 @@ import com.example.mojadieta.domain.repository.ProfileRepository
 import com.example.mojadieta.domain.repository.RecipeRepository
 import com.example.mojadieta.domain.repository.WaterRepository
 import com.example.mojadieta.domain.repository.WeightRepository
+import com.example.mojadieta.domain.settings.AppSettings
 import com.example.mojadieta.domain.usecase.AddRecipeToDiaryUseCase
 import com.example.mojadieta.domain.usecase.CalculateDailyGoalUseCase
 import com.example.mojadieta.domain.usecase.CalculateNutritionSummaryUseCase
 import com.example.mojadieta.domain.usecase.scaledTo
+import com.example.mojadieta.ui.util.dayMonth
 import com.example.mojadieta.ui.util.formatGrams
+import com.example.mojadieta.ui.util.plural
 import com.example.mojadieta.ui.util.startOfWeek
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
@@ -47,14 +59,29 @@ data class DiaryUiState(
     val recipes: List<Recipe> = emptyList(),
     /** Dzienny cel z profilu albo null, gdy profil nie jest uzupełniony. */
     val goal: DailyGoal? = null,
-    val latestWeight: WeightEntry? = null
+    val latestWeight: WeightEntry? = null,
+    /** Kropki w pasku tygodnia. */
+    val dayStatuses: Map<LocalDate, DayStatus> = emptyMap(),
+    val activityMinutes: Int = 0,
+    val activityCalories: Int = 0,
+    val settings: AppSettings = AppSettings()
 )
 
 private data class DayData(
     val date: LocalDate,
     val meals: List<MealEntry>,
-    val water: WaterIntake
+    val water: WaterIntake,
+    val activityMinutes: Int,
+    val activityCalories: Int
 )
+
+/** Wartości wpisu ręcznego po edycji. */
+data class ManualValues(val name: String, val calories: Int, val protein: Double, val carbs: Double, val fat: Double)
+
+sealed interface DiaryMessage {
+    data class Text(val text: String) : DiaryMessage
+    data class Deleted(val entry: MealEntry) : DiaryMessage
+}
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class DiaryViewModel(
@@ -68,24 +95,37 @@ class DiaryViewModel(
     private val calculateNutritionSummary: CalculateNutritionSummaryUseCase,
     calculateDailyGoal: CalculateDailyGoalUseCase,
     val productLookup: ProductLookup,
-    val imageStorage: ImageStorage
+    val imageStorage: ImageStorage,
+    private val settingsRepository: SettingsRepository,
+    private val productUsageRepository: ProductUsageRepository,
+    activityRepository: ActivityRepository
 ) : ViewModel() {
 
     private val selectedDate = MutableStateFlow(LocalDate.now())
     private val weekStart = MutableStateFlow(LocalDate.now().startOfWeek())
 
+    private val _messages = MutableSharedFlow<DiaryMessage>(extraBufferCapacity = 4)
+    val messages: SharedFlow<DiaryMessage> = _messages.asSharedFlow()
+
     private val dayData = selectedDate.flatMapLatest { date ->
         combine(
             diaryRepository.observeMeals(date),
-            waterRepository.observeWater(date)
-        ) { meals, water -> DayData(date, meals, water) }
+            waterRepository.observeWater(date),
+            activityRepository.observeDay(date)
+        ) { meals, water, activities ->
+            DayData(date, meals, water, activities.sumOf { it.durationMin }, activities.sumOf { it.calories })
+        }
     }
 
     private val goal = profileRepository.observeProfile().map { profile ->
         profile?.let { calculateDailyGoal(it).goal }
     }
 
-    val uiState: StateFlow<DiaryUiState> = combine(
+    private val weekTotals = weekStart.flatMapLatest { start ->
+        diaryRepository.observeTotals(start, start.plusDays(6)).map { start to it }
+    }
+
+    private val baseState = combine(
         dayData,
         weekStart,
         recipeRepository.observeRecipes(),
@@ -101,7 +141,21 @@ class DiaryViewModel(
             water = day.water,
             recipes = recipes,
             goal = dailyGoal,
-            latestWeight = weight
+            latestWeight = weight,
+            activityMinutes = day.activityMinutes,
+            activityCalories = day.activityCalories
+        )
+    }
+
+    val uiState: StateFlow<DiaryUiState> = combine(baseState, weekTotals, settingsRepository.settings) { base, totals, settings ->
+        val (_, rows) = totals
+        val byDate = rows.associateBy { it.date }
+        base.copy(
+            dayStatuses = (0L..6L).associate { offset ->
+                val date = base.weekStart.plusDays(offset)
+                date to dayStatus(byDate[date], base.goal?.calories)
+            },
+            settings = settings
         )
     }.stateIn(
         scope = viewModelScope,
@@ -112,6 +166,14 @@ class DiaryViewModel(
     /** Produkty do okna „Dodaj produkt” (baza wbudowana + moje produkty). */
     val products: StateFlow<List<FoodProduct>> = productRepository.observeProducts()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val recentProducts: StateFlow<List<ProductUsage>> = productUsageRepository.observeRecent()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val favoriteProducts: StateFlow<List<ProductUsage>> = productUsageRepository.observeFavorites()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    private val newEaten: Boolean get() = settingsRepository.current.newEntriesEaten
 
     fun selectDate(date: LocalDate) {
         selectedDate.value = date
@@ -131,7 +193,7 @@ class DiaryViewModel(
 
     fun addRecipeMeal(recipe: Recipe, mealType: MealType, servings: Double = 1.0) {
         viewModelScope.launch {
-            addRecipeToDiary(recipe, selectedDate.value, mealType, servings = servings)
+            addRecipeToDiary(recipe, selectedDate.value, mealType, eaten = newEaten, servings = servings)
         }
     }
 
@@ -147,10 +209,19 @@ class DiaryViewModel(
                     calories = Math.round(item.calories).toInt(),
                     protein = Math.round(item.protein * 10.0) / 10.0,
                     carbs = Math.round(item.carbs * 10.0) / 10.0,
-                    fat = Math.round(item.fat * 10.0) / 10.0
+                    fat = Math.round(item.fat * 10.0) / 10.0,
+                    isEaten = newEaten,
+                    fiber = item.fiber?.let { Math.round(it * 10.0) / 10.0 },
+                    sugar = item.sugar?.let { Math.round(it * 10.0) / 10.0 },
+                    salt = item.salt?.let { Math.round(it * 100.0) / 100.0 }
                 )
             )
+            productUsageRepository.recordUse(product.name)
         }
+    }
+
+    fun toggleFavoriteProduct(name: String) {
+        viewModelScope.launch { productUsageRepository.toggleFavorite(name) }
     }
 
     fun addManualMeal(
@@ -170,17 +241,27 @@ class DiaryViewModel(
                     calories = calories,
                     protein = protein,
                     carbs = carbs,
-                    fat = fat
+                    fat = fat,
+                    isEaten = newEaten
                 )
             )
         }
     }
 
-    /** Zmiana porcji, pory posiłku i zdjęcia wpisu. */
-    fun updateEntry(entry: MealEntry, servings: Double, mealType: MealType, imagePath: String?) {
+    /** Zmiana porcji, pory posiłku i zdjęcia wpisu (a dla wpisów ręcznych także nazwy i wartości). */
+    fun updateEntry(entry: MealEntry, servings: Double, mealType: MealType, imagePath: String?, manual: ManualValues? = null) {
         if (entry.imagePath != null && entry.imagePath != imagePath) imageStorage.delete(entry.imagePath)
+        val base = if (manual != null) {
+            entry.copy(
+                name = manual.name.trim().ifEmpty { entry.name },
+                calories = manual.calories,
+                protein = manual.protein,
+                carbs = manual.carbs,
+                fat = manual.fat
+            )
+        } else entry
         viewModelScope.launch {
-            diaryRepository.updateMeal(entry.scaledTo(servings).copy(mealType = mealType, imagePath = imagePath))
+            diaryRepository.updateMeal(base.scaledTo(servings).copy(mealType = mealType, imagePath = imagePath))
         }
     }
 
@@ -188,9 +269,53 @@ class DiaryViewModel(
         viewModelScope.launch { diaryRepository.setEaten(entry.id, !entry.isEaten) }
     }
 
+    fun setEaten(entry: MealEntry, eaten: Boolean) {
+        if (entry.isEaten == eaten) return
+        viewModelScope.launch { diaryRepository.setEaten(entry.id, eaten) }
+    }
+
+    /** „Zaznacz wszystkie” – a gdy wszystkie są już zaznaczone, odznacza. */
+    fun toggleAllEaten(mealType: MealType) {
+        val entries = uiState.value.mealsByType[mealType].orEmpty()
+        if (entries.isEmpty()) return
+        val target = !entries.all { it.isEaten }
+        viewModelScope.launch { diaryRepository.setEatenForMeal(selectedDate.value, mealType, target) }
+    }
+
+    /** Usunięcie z możliwością cofnięcia (zdjęcie zostaje do czasu sprzątania przy następnym starcie). */
     fun deleteMeal(entry: MealEntry) {
-        imageStorage.delete(entry.imagePath)
-        viewModelScope.launch { diaryRepository.deleteMeal(entry.id) }
+        viewModelScope.launch {
+            diaryRepository.deleteMeal(entry.id)
+            _messages.emit(DiaryMessage.Deleted(entry))
+        }
+    }
+
+    fun undoDelete(entry: MealEntry) {
+        viewModelScope.launch { diaryRepository.addMeal(entry) }
+    }
+
+    /** Kopiuje wpisy z dnia poprzedniego (całego albo jednej pory) na wybrany dzień. */
+    fun repeatYesterday(mealType: MealType? = null) {
+        val target = selectedDate.value
+        val source = target.minusDays(1)
+        viewModelScope.launch {
+            val entries = if (mealType == null) diaryRepository.getMeals(source) else diaryRepository.getMeals(source, mealType)
+            if (entries.isEmpty()) {
+                _messages.emit(DiaryMessage.Text("Brak wpisów z ${source.dayMonth()}" + (mealType?.let { " (${it.label.lowercase()})" } ?: "")))
+                return@launch
+            }
+            diaryRepository.addMeals(entries.map { it.copy(id = 0, date = target, isEaten = newEaten, imagePath = null) })
+            _messages.emit(
+                DiaryMessage.Text("Skopiowano ${entries.size} ${plural(entries.size, "wpis", "wpisy", "wpisów")} z ${source.dayMonth()}")
+            )
+        }
+    }
+
+    fun copyEntry(entry: MealEntry, date: LocalDate, mealType: MealType) {
+        viewModelScope.launch {
+            diaryRepository.addMeal(entry.copy(id = 0, date = date, mealType = mealType, isEaten = newEaten, imagePath = null))
+            _messages.emit(DiaryMessage.Text("Skopiowano na ${date.dayMonth()} · ${mealType.label}"))
+        }
     }
 
     fun changeWater(deltaMl: Int) {

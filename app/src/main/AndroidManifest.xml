@@ -11,8 +11,21 @@
     <!-- Skaner kodów kreskowych i zdjęcia posiłków -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
-    <!-- Odczyt pomiarów wagi z Health Connect -->
+    <!-- Odczyt z Health Connect: waga, skład ciała, treningi, kroki, kalorie, dystans, tętno -->
     <uses-permission android:name="android.permission.health.READ_WEIGHT" />
+    <uses-permission android:name="android.permission.health.READ_BODY_FAT" />
+    <uses-permission android:name="android.permission.health.READ_LEAN_BODY_MASS" />
+    <uses-permission android:name="android.permission.health.READ_BODY_WATER_MASS" />
+    <uses-permission android:name="android.permission.health.READ_BONE_MASS" />
+    <uses-permission android:name="android.permission.health.READ_EXERCISE" />
+    <uses-permission android:name="android.permission.health.READ_STEPS" />
+    <uses-permission android:name="android.permission.health.READ_ACTIVE_CALORIES_BURNED" />
+    <uses-permission android:name="android.permission.health.READ_DISTANCE" />
+    <uses-permission android:name="android.permission.health.READ_HEART_RATE" />
+    <!-- Ponowne ustawienie przypomnień po restarcie telefonu -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Przypomnienia o dokładnej godzinie (użytkownik włącza w ustawieniach systemu) -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 
     <queries>
         <!-- Health Connect na Androidzie 13 i starszym -->
@@ -38,6 +51,10 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- Skróty po przytrzymaniu ikony -->
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
         </activity>
 
         <!-- Wyjaśnienie użycia danych zdrowotnych (wymagane przez Health Connect) -->
@@ -77,6 +94,48 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/diet_widget_info" />
         </receiver>
+
+        <!-- Mały widżet: tylko woda -->
+        <receiver
+            android:name=".widget.WaterWidgetReceiver"
+            android:exported="true"
+            android:label="@string/water_widget_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/water_widget_info" />
+        </receiver>
+
+        <!-- Przypomnienia (waga, woda, posiłki, planowanie, podsumowanie, post) -->
+        <receiver
+            android:name=".reminders.ReminderReceiver"
+            android:exported="false" />
+
+        <receiver
+            android:name=".reminders.BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Kafelek w szybkich ustawieniach: +250 ml wody -->
+        <service
+            android:name=".widget.WaterTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_water_tile"
+            android:label="@string/tile_water"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
 
         <provider
             android:name="androidx.core.content.FileProvider"

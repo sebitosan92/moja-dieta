@@ -9,7 +9,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material.icons.outlined.Person
 import com.example.mojadieta.ui.recipes.IngredientPickerSheet
 import androidx.compose.material.icons.outlined.CalendarMonth
@@ -25,6 +27,14 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -45,6 +55,11 @@ fun DiaryScreen(
     onOpenAbout: () -> Unit,
     onOpenProfile: () -> Unit,
     onOpenWeight: () -> Unit,
+    onOpenStats: () -> Unit = {},
+    onOpenShopping: () -> Unit = {},
+    onOpenSettings: () -> Unit = {},
+    openScanRequest: Boolean = false,
+    onScanRequestHandled: () -> Unit = {},
     viewModel: DiaryViewModel = viewModel(factory = AppViewModelProvider.Factory)
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -55,6 +70,42 @@ fun DiaryScreen(
     var productPickerFor by rememberSaveable { mutableStateOf<MealType?>(null) }
     var productPickerScan by rememberSaveable { mutableStateOf(false) }
     val products by viewModel.products.collectAsStateWithLifecycle()
+    val recentProducts by viewModel.recentProducts.collectAsStateWithLifecycle()
+    val favoriteProducts by viewModel.favoriteProducts.collectAsStateWithLifecycle()
+    val snackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(viewModel) {
+        viewModel.messages.collect { message ->
+            when (message) {
+                is DiaryMessage.Text -> scope.launch { snackbar.showSnackbar(message.text) }
+                is DiaryMessage.Deleted -> scope.launch {
+                    val result = snackbar.showSnackbar(
+                        "Usunięto: ${message.entry.name}",
+                        actionLabel = "Cofnij",
+                        duration = SnackbarDuration.Long
+                    )
+                    if (result == SnackbarResult.ActionPerformed) viewModel.undoDelete(message.entry)
+                }
+            }
+        }
+    }
+
+    // Skrót „Skanuj kod”: od razu skaner dla pory posiłku pasującej do godziny.
+    LaunchedEffect(openScanRequest) {
+        if (openScanRequest) {
+            val hour = java.time.LocalTime.now().hour
+            productPickerScan = true
+            productPickerFor = when {
+                hour < 10 -> MealType.BREAKFAST
+                hour < 13 -> MealType.SECOND_BREAKFAST
+                hour < 16 -> MealType.LUNCH
+                hour < 18 -> MealType.AFTERNOON_SNACK
+                else -> MealType.DINNER
+            }
+            onScanRequestHandled()
+        }
+    }
 
     if (showDatePicker) {
         DateJumpDialog(
@@ -68,6 +119,7 @@ fun DiaryScreen(
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
             TopAppBar(
                 title = {
@@ -91,8 +143,16 @@ fun DiaryScreen(
                     IconButton(onClick = onOpenProfile) {
                         Icon(Icons.Outlined.Person, contentDescription = "Mój profil i cele")
                     }
-                    IconButton(onClick = onOpenAbout) {
-                        Icon(Icons.Outlined.Info, contentDescription = "O aplikacji i aktualizacje")
+                    var menu by rememberSaveable { mutableStateOf(false) }
+                    IconButton(onClick = { menu = true }) {
+                        Icon(Icons.Outlined.MoreVert, contentDescription = "Więcej")
+                    }
+                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        DropdownMenuItem(text = { Text("Powtórz wczorajszy dzień") }, onClick = { menu = false; viewModel.repeatYesterday() })
+                        DropdownMenuItem(text = { Text("Statystyki") }, onClick = { menu = false; onOpenStats() })
+                        DropdownMenuItem(text = { Text("Lista zakupów") }, onClick = { menu = false; onOpenShopping() })
+                        DropdownMenuItem(text = { Text("Ustawienia") }, onClick = { menu = false; onOpenSettings() })
+                        DropdownMenuItem(text = { Text("O aplikacji") }, onClick = { menu = false; onOpenAbout() })
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
@@ -122,7 +182,8 @@ fun DiaryScreen(
                     selectedDate = state.selectedDate,
                     onPreviousWeek = viewModel::previousWeek,
                     onNextWeek = viewModel::nextWeek,
-                    onDayClick = viewModel::selectDate
+                    onDayClick = viewModel::selectDate,
+                    dayStatuses = state.dayStatuses
                 )
             }
             item(key = "summary") {
@@ -130,8 +191,13 @@ fun DiaryScreen(
                     eaten = state.eatenSummary,
                     total = state.totalSummary,
                     goal = state.goal,
-                    onSetGoal = onOpenProfile
+                    onSetGoal = onOpenProfile,
+                    activityMinutes = state.activityMinutes,
+                    activityCalories = state.activityCalories
                 )
+            }
+            if (state.settings.fastingEnabled && state.selectedDate == LocalDate.now()) {
+                item(key = "fasting") { FastingCard(state.settings) }
             }
             item(key = "water") {
                 WaterCard(
@@ -157,7 +223,10 @@ fun DiaryScreen(
                     onAddClick = { addMealFor = mealType },
                     onToggleEaten = viewModel::toggleEaten,
                     onEntryClick = { editEntryId = it.id },
-                    onDelete = viewModel::deleteMeal
+                    onDelete = viewModel::deleteMeal,
+                    onSetEaten = viewModel::setEaten,
+                    onToggleAll = { viewModel.toggleAllEaten(mealType) },
+                    onRepeatYesterday = { viewModel.repeatYesterday(mealType) }
                 )
             }
         }
@@ -195,7 +264,10 @@ fun DiaryScreen(
             },
             title = "Dodaj produkt · ${mealType.label}",
             confirmLabel = "Dodaj do dziennika",
-            startWithScanner = productPickerScan
+            startWithScanner = productPickerScan,
+            recentNames = recentProducts.map { it.name },
+            favoriteNames = favoriteProducts.map { it.name },
+            onToggleFavorite = { viewModel.toggleFavoriteProduct(it.name) }
         )
     }
 
@@ -205,8 +277,12 @@ fun DiaryScreen(
             entry = editedEntry,
             imageStorage = viewModel.imageStorage,
             onDismiss = { editEntryId = null },
-            onSave = { servings, mealType, imagePath ->
-                viewModel.updateEntry(editedEntry, servings, mealType, imagePath)
+            onSave = { servings, mealType, imagePath, manual ->
+                viewModel.updateEntry(editedEntry, servings, mealType, imagePath, manual)
+                editEntryId = null
+            },
+            onCopy = { date, mealType ->
+                viewModel.copyEntry(editedEntry, date, mealType)
                 editEntryId = null
             }
         )

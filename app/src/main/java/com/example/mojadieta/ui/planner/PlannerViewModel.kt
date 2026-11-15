@@ -2,6 +2,13 @@ package com.example.mojadieta.ui.planner
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.mojadieta.data.repository.ActivityRepository
+import com.example.mojadieta.domain.model.ActivityEntry
+import com.example.mojadieta.domain.model.PlannedActivity
+import com.example.mojadieta.domain.repository.ProfileRepository
+import com.example.mojadieta.domain.usecase.ActivityCalc
+import kotlinx.coroutines.flow.first
+import java.time.ZoneId
 import com.example.mojadieta.domain.model.MealType
 import com.example.mojadieta.domain.model.PlannedMeal
 import com.example.mojadieta.domain.model.Recipe
@@ -27,7 +34,8 @@ import java.time.LocalDate
 
 data class PlannerDay(
     val date: LocalDate,
-    val mealsByType: Map<MealType, List<PlannedMeal>>
+    val mealsByType: Map<MealType, List<PlannedMeal>>,
+    val activities: List<PlannedActivity> = emptyList()
 ) {
     val totalCalories: Int get() = mealsByType.values.flatten().sumOf { it.recipe.calories }
     val isEmpty: Boolean get() = mealsByType.values.all { it.isEmpty() }
@@ -45,19 +53,26 @@ data class PlannerUiState(
 class PlannerViewModel(
     private val plannerRepository: PlannerRepository,
     recipeRepository: RecipeRepository,
-    private val copyPlannedMealsToDiary: CopyPlannedMealsToDiaryUseCase
+    private val copyPlannedMealsToDiary: CopyPlannedMealsToDiaryUseCase,
+    private val activityRepository: ActivityRepository,
+    private val profileRepository: ProfileRepository
 ) : ViewModel() {
 
     private val weekStart = MutableStateFlow(LocalDate.now().startOfWeek())
 
     private val weekDays = weekStart.flatMapLatest { start ->
-        plannerRepository.observePlannedMeals(start, start.plusDays(6)).map { planned ->
+        combine(
+            plannerRepository.observePlannedMeals(start, start.plusDays(6)),
+            activityRepository.observePlanned(start, start.plusDays(6))
+        ) { planned, activities ->
             val byDate = planned.groupBy { it.date }
+            val activitiesByDate = activities.groupBy { it.date }
             (0L..6L).map { offset ->
                 val date = start.plusDays(offset)
                 PlannerDay(
                     date = date,
-                    mealsByType = byDate[date].orEmpty().groupBy { it.mealType }
+                    mealsByType = byDate[date].orEmpty().groupBy { it.mealType },
+                    activities = activitiesByDate[date].orEmpty()
                 )
             }
         }.map { days -> start to days }
@@ -93,6 +108,36 @@ class PlannerViewModel(
 
     fun removePlannedMeal(plannedMeal: PlannedMeal) {
         viewModelScope.launch { plannerRepository.deletePlannedMeal(plannedMeal.id) }
+    }
+
+    fun addPlannedActivity(planned: PlannedActivity) {
+        viewModelScope.launch { activityRepository.addPlanned(planned) }
+    }
+
+    fun removePlannedActivity(planned: PlannedActivity) {
+        viewModelScope.launch { activityRepository.deletePlanned(planned.id) }
+    }
+
+    /** Oznacza zaplanowany trening jako wykonany: trafia do zakładki Aktywność i znika z planu. */
+    fun completePlannedActivity(planned: PlannedActivity) {
+        viewModelScope.launch {
+            val weight = profileRepository.observeProfile().first()?.weightKg ?: 70.0
+            val start = if (planned.date == LocalDate.now()) System.currentTimeMillis() - planned.durationMin * 60_000L
+            else planned.date.atTime(17, 0).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+            activityRepository.save(
+                ActivityEntry(
+                    date = planned.date,
+                    startMillis = start,
+                    type = planned.type,
+                    durationMin = planned.durationMin,
+                    intensity = planned.intensity,
+                    calories = ActivityCalc.metCalories(planned.type, planned.intensity, weight, planned.durationMin),
+                    note = planned.note
+                )
+            )
+            activityRepository.deletePlanned(planned.id)
+            _messages.emit("Trening zapisany w zakładce Aktywność")
+        }
     }
 
     fun copyDayToDiary(date: LocalDate) {

@@ -40,6 +40,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.Tab
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -84,17 +86,28 @@ import java.time.LocalDate
 @Composable
 fun WeightScreen(
     onBack: () -> Unit,
+    openAddRequest: Boolean = false,
+    onAddRequestHandled: () -> Unit = {},
     viewModel: WeightViewModel = viewModel(factory = AppViewModelProvider.Factory)
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     var showAdd by rememberSaveable { mutableStateOf(false) }
     var toDelete by remember { mutableStateOf<WeightEntry?>(null) }
+    // 0 = waga, 1 = skład ciała, 2 = obwody
+    var tab by rememberSaveable { mutableStateOf(0) }
+    var showAddMetric by rememberSaveable { mutableStateOf(false) }
     val permissionLauncher = rememberLauncherForActivityResult(viewModel.permissionContract) { granted ->
         viewModel.onPermissionResult(granted)
     }
 
     LaunchedEffect(viewModel) { viewModel.messages.collect { snackbar.showSnackbar(it) } }
+    LaunchedEffect(openAddRequest) {
+        if (openAddRequest) {
+            showAdd = true
+            onAddRequestHandled()
+        }
+    }
     // Po powrocie z ustawień Health Connect sprawdzamy zgodę ponownie.
     LifecycleResumeEffect(viewModel) {
         viewModel.refreshHealthConnect(syncIfPossible = false, announce = false)
@@ -104,19 +117,26 @@ fun WeightScreen(
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
-            TopAppBar(
-                title = { Text("Waga") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Wstecz")
+            Column {
+                TopAppBar(
+                    title = { Text("Waga i ciało") },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Wstecz")
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
+                )
+                PrimaryTabRow(selectedTabIndex = tab, containerColor = MaterialTheme.colorScheme.background) {
+                    listOf("Waga", "Skład ciała", "Obwody").forEachIndexed { index, label ->
+                        Tab(selected = tab == index, onClick = { tab = index }, text = { Text(label) })
                     }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
-            )
+                }
+            }
         },
         floatingActionButton = {
             ExtendedFloatingActionButton(
-                onClick = { showAdd = true },
+                onClick = { if (tab == 0) showAdd = true else showAddMetric = true },
                 icon = { Icon(Icons.Outlined.Add, contentDescription = null) },
                 text = { Text("Dodaj pomiar") }
             )
@@ -132,6 +152,25 @@ fun WeightScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            if (tab != 0) {
+                item(key = "metrics_$tab") {
+                    BodyMetricCards(
+                        metrics = state.metrics,
+                        composition = tab == 1,
+                        onDelete = viewModel::deleteMetric
+                    )
+                }
+                if (tab == 1) {
+                    item(key = "hc_body") {
+                        HealthConnectCard(
+                            hc = state.healthConnect,
+                            onConnect = { permissionLauncher.launch(viewModel.permissions) },
+                            onSync = { viewModel.sync() }
+                        )
+                    }
+                }
+            }
+            if (tab == 0) {
             item(key = "summary") { SummaryCard(state) }
             item(key = "chart") { ChartCard(state.entries) }
             item(key = "hc") {
@@ -159,9 +198,20 @@ fun WeightScreen(
                     }
                 }
             }
+            }
         }
     }
 
+    if (showAddMetric) {
+        AddBodyMetricDialog(
+            composition = tab == 1,
+            onDismiss = { showAddMetric = false },
+            onSave = { type, value, date ->
+                viewModel.addMetric(type, value, date)
+                showAddMetric = false
+            }
+        )
+    }
     if (showAdd) {
         AddWeightDialog(
             initialWeight = state.latest?.weightKg,
@@ -335,7 +385,7 @@ private fun HealthConnectCard(hc: HealthConnectState, onConnect: () -> Unit, onS
                 !hc.hasPermission -> {
                     Text(
                         "Połącz, aby pomiary z wagi (np. Huawei Scale 3 przez Huawei Zdrowie) pojawiały się tu automatycznie. " +
-                            "Aplikacja odczytuje tylko wagę.",
+                            "Aplikacja odczytuje wagę, skład ciała i aktywność – niczego nie zapisuje.",
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Button(onClick = onConnect) { Text("Połącz z Health Connect") }
@@ -400,7 +450,7 @@ private fun AddWeightDialog(
     onDismiss: () -> Unit,
     onSave: (LocalDate, Double) -> Unit
 ) {
-    var weightText by rememberSaveable { mutableStateOf(initialWeight?.let { formatGrams(it) } ?: "") }
+    var weightText by rememberSaveable(initialWeight) { mutableStateOf(initialWeight?.let { formatGrams(it) } ?: "") }
     var dateEpoch by rememberSaveable { mutableStateOf(LocalDate.now().toEpochDay()) }
     var showDate by rememberSaveable { mutableStateOf(false) }
     val weight = parseDecimal(weightText)?.takeIf { it in 20.0..350.0 }

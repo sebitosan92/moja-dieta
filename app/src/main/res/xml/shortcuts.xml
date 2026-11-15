@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_water"
+        android:shortcutId="add_water"
+        android:shortcutLongLabel="@string/shortcut_water_long"
+        android:shortcutShortLabel="@string/shortcut_water_short">
+        <intent
+            android:action="com.example.mojadieta.action.ADD_WATER"
+            android:targetClass="com.example.mojadieta.MainActivity"
+            android:targetPackage="com.example.mojadieta" />
+    </shortcut>
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_scan"
+        android:shortcutId="scan"
+        android:shortcutLongLabel="@string/shortcut_scan_long"
+        android:shortcutShortLabel="@string/shortcut_scan_short">
+        <intent
+            android:action="com.example.mojadieta.action.SCAN"
+            android:targetClass="com.example.mojadieta.MainActivity"
+            android:targetPackage="com.example.mojadieta" />
+    </shortcut>
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_weight"
+        android:shortcutId="add_weight"
+        android:shortcutLongLabel="@string/shortcut_weight_long"
+        android:shortcutShortLabel="@string/shortcut_weight_short">
+        <intent
+            android:action="com.example.mojadieta.action.ADD_WEIGHT"
+            android:targetClass="com.example.mojadieta.MainActivity"
+            android:targetPackage="com.example.mojadieta" />
+    </shortcut>
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_activity"
+        android:shortcutId="add_activity"
+        android:shortcutLongLabel="@string/shortcut_activity_long"
+        android:shortcutShortLabel="@string/shortcut_activity_short">
+        <intent
+            android:action="com.example.mojadieta.action.ADD_ACTIVITY"
+            android:targetClass="com.example.mojadieta.MainActivity"
+            android:targetPackage="com.example.mojadieta" />
+    </shortcut>
+</shortcuts>

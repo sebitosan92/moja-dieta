@@ -18,6 +18,7 @@ import com.example.mojadieta.ui.update.UpdateViewModel
 import com.example.mojadieta.ui.importer.ImportViewModel
 import com.example.mojadieta.ui.profile.ProfileViewModel
 import com.example.mojadieta.ui.weight.WeightViewModel
+import com.example.mojadieta.ui.activity.ActivityViewModel
 
 /** Fabryka wszystkich ViewModeli aplikacji – zależności pochodzą z [AppContainer]. */
 object AppViewModelProvider {
@@ -35,7 +36,10 @@ object AppViewModelProvider {
                 calculateNutritionSummary = c.calculateNutritionSummary,
                 calculateDailyGoal = c.calculateDailyGoal,
                 productLookup = c.productLookup,
-                imageStorage = c.imageStorage
+                imageStorage = c.imageStorage,
+                settingsRepository = c.settingsRepository,
+                productUsageRepository = c.productUsageRepository,
+                activityRepository = c.activityRepository
             )
         }
         initializer {
@@ -66,7 +70,9 @@ object AppViewModelProvider {
             PlannerViewModel(
                 plannerRepository = c.plannerRepository,
                 recipeRepository = c.recipeRepository,
-                copyPlannedMealsToDiary = c.copyPlannedMealsToDiary
+                copyPlannedMealsToDiary = c.copyPlannedMealsToDiary,
+                activityRepository = c.activityRepository,
+                profileRepository = c.profileRepository
             )
         }
         initializer {
@@ -81,7 +87,17 @@ object AppViewModelProvider {
         }
         initializer {
             val c = container()
-            WeightViewModel(c.weightRepository, c.healthConnect, c)
+            WeightViewModel(c.weightRepository, c.healthConnect, c, c.bodyMetricRepository)
+        }
+        initializer {
+            val c = container()
+            ActivityViewModel(c.activityRepository, c.profileRepository, c.settingsRepository, c.healthConnect, c)
+        }
+        initializer { com.example.mojadieta.ui.shopping.ShoppingViewModel(container().shoppingRepository) }
+        initializer { com.example.mojadieta.ui.stats.StatsViewModel(container().statsCalculator) }
+        initializer {
+            val c = container()
+            com.example.mojadieta.ui.settings.SettingsViewModel(c.settingsRepository, c.backupManager)
         }
         initializer {
             val c = container()

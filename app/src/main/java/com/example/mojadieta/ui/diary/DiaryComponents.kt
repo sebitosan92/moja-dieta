@@ -1,5 +1,23 @@
 package com.example.mojadieta.ui.diary
 
+import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.DoneAll
+import androidx.compose.material.icons.outlined.Replay
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.rememberSwipeToDismissBoxState
+import androidx.compose.runtime.key
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.remember
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxSize
+import com.example.mojadieta.ui.components.DateJumpDialog
+import java.time.LocalDate
 import androidx.compose.foundation.layout.Arrangement
 import com.example.mojadieta.ui.util.parseDecimal
 import com.example.mojadieta.ui.util.formatServings
@@ -77,7 +95,7 @@ import com.example.mojadieta.ui.theme.CarbsColor
 import com.example.mojadieta.ui.theme.FatColor
 import com.example.mojadieta.ui.theme.ProteinColor
 import com.example.mojadieta.ui.theme.WaterColor
-import com.example.mojadieta.ui.theme.WaterContainer
+import com.example.mojadieta.ui.theme.AppColors
 import com.example.mojadieta.ui.util.formatGrams
 
 /** Karta podsumowania dnia: kalorie i makro – względem celu (jeśli ustawiony). */
@@ -87,7 +105,9 @@ fun DaySummaryCard(
     total: NutritionSummary,
     goal: DailyGoal?,
     onSetGoal: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    activityMinutes: Int = 0,
+    activityCalories: Int = 0
 ) {
     Card(
         modifier = modifier.fillMaxWidth(),
@@ -146,10 +166,31 @@ fun DaySummaryCard(
                 )
             }
             Text(
-                text = "W dzienniku: ${total.calories} kcal · zaznacz posiłki jako zjedzone, aby je zliczyć",
+                text = "W dzienniku: ${total.calories} kcal · zaznacz posiłki jako zjedzone (albo przesuń w prawo), aby je zliczyć",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            val extras = listOfNotNull(
+                eaten.fiber?.let { "błonnik ${formatGrams(it)} g" },
+                eaten.sugar?.let { "cukry ${formatGrams(it)} g" },
+                eaten.salt?.let { "sól ${formatGrams(it)} g" }
+            )
+            if (extras.isNotEmpty()) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    extras.joinToString(" · ") + if (eaten.extrasIncomplete) " (część wpisów bez danych)" else "",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            if (activityMinutes > 0) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Aktywność: $activityMinutes min, ok. $activityCalories kcal spalonych – informacyjnie, cel się nie zmienia",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.secondary
+                )
+            }
         }
     }
 }
@@ -228,7 +269,7 @@ fun WaterCard(
     Card(
         modifier = modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(containerColor = WaterContainer)
+        colors = CardDefaults.cardColors(containerColor = AppColors.waterContainer)
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -268,7 +309,7 @@ fun WaterCard(
                     .fillMaxWidth()
                     .height(10.dp),
                 color = WaterColor,
-                trackColor = Color.White,
+                trackColor = AppColors.waterTrack,
                 strokeCap = StrokeCap.Round,
                 drawStopIndicator = {}
             )
@@ -339,8 +380,12 @@ fun MealSectionCard(
     onToggleEaten: (MealEntry) -> Unit,
     onEntryClick: (MealEntry) -> Unit,
     onDelete: (MealEntry) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onSetEaten: (MealEntry, Boolean) -> Unit = { e, _ -> onToggleEaten(e) },
+    onToggleAll: () -> Unit = {},
+    onRepeatYesterday: () -> Unit = {}
 ) {
+    var menu by remember { mutableStateOf(false) }
     Card(
         modifier = modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.large,
@@ -354,20 +399,45 @@ fun MealSectionCard(
                 Text(
                     text = "${entries.sumOf { it.calories }} kcal",
                     style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(end = 8.dp)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                Box {
+                    IconButton(onClick = { menu = true }) {
+                        Icon(Icons.Outlined.MoreVert, contentDescription = "Więcej opcji: ${mealType.label}")
+                    }
+                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        if (entries.isNotEmpty()) {
+                            DropdownMenuItem(
+                                text = { Text(if (entries.all { it.isEaten }) "Odznacz wszystkie" else "Zaznacz wszystkie jako zjedzone") },
+                                leadingIcon = { Icon(Icons.Outlined.DoneAll, contentDescription = null) },
+                                onClick = { menu = false; onToggleAll() }
+                            )
+                        }
+                        DropdownMenuItem(
+                            text = { Text("Powtórz z wczoraj") },
+                            leadingIcon = { Icon(Icons.Outlined.Replay, contentDescription = null) },
+                            onClick = { menu = false; onRepeatYesterday() }
+                        )
+                    }
+                }
             }
             if (entries.isNotEmpty()) {
                 Spacer(Modifier.height(4.dp))
                 entries.forEachIndexed { index, entry ->
                     if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    MealEntryRow(
-                        entry,
-                        onToggleEaten = { onToggleEaten(entry) },
-                        onClick = { onEntryClick(entry) },
-                        onDelete = { onDelete(entry) }
-                    )
+                    key(entry.id) {
+                        SwipeableEntry(
+                            onSwipeRight = { onSetEaten(entry, true) },
+                            onSwipeLeft = { onDelete(entry) }
+                        ) {
+                            MealEntryRow(
+                                entry,
+                                onToggleEaten = { onToggleEaten(entry) },
+                                onClick = { onEntryClick(entry) },
+                                onDelete = { onDelete(entry) }
+                            )
+                        }
+                    }
                 }
             }
             TextButton(onClick = onAddClick) {
@@ -376,6 +446,45 @@ fun MealSectionCard(
                 Text("Dodaj posiłek")
             }
         }
+    }
+}
+
+/** Przesunięcie w prawo = zjedzone, w lewo = usuń (z „Cofnij” w pasku na dole). */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SwipeableEntry(onSwipeRight: () -> Unit, onSwipeLeft: () -> Unit, content: @Composable () -> Unit) {
+    val state = rememberSwipeToDismissBoxState()
+    val scope = rememberCoroutineScope()
+    SwipeToDismissBox(
+        state = state,
+        onDismiss = { value ->
+            when (value) {
+                SwipeToDismissBoxValue.StartToEnd -> onSwipeRight()
+                SwipeToDismissBoxValue.EndToStart -> onSwipeLeft()
+                else -> Unit
+            }
+            scope.launch { state.snapTo(SwipeToDismissBoxValue.Settled) }
+        },
+        backgroundContent = {
+            val direction = state.dismissDirection
+            val (color, icon, alignment) = when (direction) {
+                SwipeToDismissBoxValue.StartToEnd -> Triple(MaterialTheme.colorScheme.primaryContainer, Icons.Outlined.Check, Alignment.CenterStart)
+                SwipeToDismissBoxValue.EndToStart -> Triple(MaterialTheme.colorScheme.errorContainer, Icons.Outlined.DeleteOutline, Alignment.CenterEnd)
+                else -> Triple(Color.Transparent, null, Alignment.Center)
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(MaterialTheme.shapes.small)
+                    .background(color)
+                    .padding(horizontal = 16.dp),
+                contentAlignment = alignment
+            ) {
+                icon?.let { Icon(it, contentDescription = null) }
+            }
+        }
+    ) {
+        Box(modifier = Modifier.background(MaterialTheme.colorScheme.surfaceContainerLowest)) { content() }
     }
 }
 
@@ -448,9 +557,18 @@ fun EditMealEntrySheet(
     entry: MealEntry,
     imageStorage: ImageStorage,
     onDismiss: () -> Unit,
-    onSave: (servings: Double, mealType: MealType, imagePath: String?) -> Unit
+    onSave: (servings: Double, mealType: MealType, imagePath: String?, manual: ManualValues?) -> Unit,
+    onCopy: (date: LocalDate, mealType: MealType) -> Unit = { _, _ -> }
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    // Wpis ręczny (bez przepisu): można poprawić nazwę i wartości.
+    val isManual = entry.recipeId == null
+    var nameText by rememberSaveable(entry.id) { mutableStateOf(entry.name) }
+    var kcalText by rememberSaveable(entry.id) { mutableStateOf(entry.calories.toString()) }
+    var proteinText by rememberSaveable(entry.id) { mutableStateOf(formatGrams(entry.protein)) }
+    var carbsText by rememberSaveable(entry.id) { mutableStateOf(formatGrams(entry.carbs)) }
+    var fatText by rememberSaveable(entry.id) { mutableStateOf(formatGrams(entry.fat)) }
+    var showCopyDate by rememberSaveable(entry.id) { mutableStateOf(false) }
     var servingsText by rememberSaveable(entry.id) { mutableStateOf(formatGrams(entry.servings)) }
     var mealType by rememberSaveable(entry.id) { mutableStateOf(entry.mealType) }
     var imagePath by rememberSaveable(entry.id) { mutableStateOf(entry.imagePath) }
@@ -470,7 +588,29 @@ fun EditMealEntrySheet(
                 .padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Text(entry.name, style = MaterialTheme.typography.titleLarge)
+            if (isManual) {
+                Text("Edytuj wpis", style = MaterialTheme.typography.titleLarge)
+                OutlinedTextField(
+                    value = nameText,
+                    onValueChange = { nameText = it.take(100) },
+                    label = { Text("Nazwa") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Text(
+                    "Wartości na 1 porcję (przy ${formatServings(entry.servings)} – jak w dzienniku)",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SmallNumber("kcal", kcalText, { kcalText = it.filter(Char::isDigit).take(5) }, Modifier.weight(1f), decimal = false)
+                    SmallNumber("B (g)", proteinText, { proteinText = it }, Modifier.weight(1f))
+                    SmallNumber("W (g)", carbsText, { carbsText = it }, Modifier.weight(1f))
+                    SmallNumber("T (g)", fatText, { fatText = it }, Modifier.weight(1f))
+                }
+            } else {
+                Text(entry.name, style = MaterialTheme.typography.titleLarge)
+            }
             Text("Pora posiłku", style = MaterialTheme.typography.labelLarge)
             MealTypeChips(selected = mealType, onSelect = { mealType = it })
             Text("Liczba porcji", style = MaterialTheme.typography.labelLarge)
@@ -510,11 +650,47 @@ fun EditMealEntrySheet(
                 },
                 imageWidthFraction = 0.6f
             )
+            val manualValues = if (isManual) {
+                val k = kcalText.toIntOrNull()
+                val p = parseDecimal(proteinText)
+                val c = parseDecimal(carbsText)
+                val f = parseDecimal(fatText)
+                if (k != null && p != null && c != null && f != null) ManualValues(nameText, k, p, c, f) else null
+            } else null
             Button(
-                onClick = { servings?.let { onSave(it, mealType, imagePath) } },
-                enabled = servings != null,
+                onClick = { servings?.let { onSave(it, mealType, imagePath, manualValues) } },
+                enabled = servings != null && (!isManual || manualValues != null),
                 modifier = Modifier.fillMaxWidth()
             ) { Text("Zapisz zmiany") }
+            OutlinedButton(onClick = { showCopyDate = true }, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Outlined.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Kopiuj na inny dzień (${mealType.label.lowercase()})")
+            }
         }
     }
+
+    if (showCopyDate) {
+        DateJumpDialog(
+            initialDate = entry.date.plusDays(1),
+            onDismiss = { showCopyDate = false },
+            onDateSelected = { date ->
+                showCopyDate = false
+                onCopy(date, mealType)
+            }
+        )
+    }
+}
+
+@Composable
+private fun SmallNumber(label: String, value: String, onChange: (String) -> Unit, modifier: Modifier, decimal: Boolean = true) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = { input -> onChange(input.filter { it.isDigit() || it == ',' || it == '.' }.take(6)) },
+        label = { Text(label, maxLines = 1) },
+        singleLine = true,
+        isError = if (decimal) parseDecimal(value) == null else value.toIntOrNull() == null,
+        keyboardOptions = KeyboardOptions(keyboardType = if (decimal) KeyboardType.Decimal else KeyboardType.Number),
+        modifier = modifier
+    )
 }

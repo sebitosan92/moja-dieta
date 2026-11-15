@@ -57,9 +57,16 @@ class OpenFoodFactsClient {
             fat = round1(nutriments.optDouble("fat_100g", 0.0)),
             unitName = if (quantity != null) "opak." else null,
             unitGrams = quantity,
-            barcode = barcode
+            barcode = barcode,
+            fiber = optional(nutriments, "fiber_100g"),
+            sugar = optional(nutriments, "sugars_100g"),
+            salt = optional(nutriments, "salt_100g")
         )
     }
+
+    /** Wartość, jeśli producent ją podał (brak ≠ zero). */
+    private fun optional(json: JSONObject, key: String): Double? =
+        if (json.has(key)) json.optDouble(key, Double.NaN).takeUnless { it.isNaN() || it < 0 }?.let { round1(it) } else null
 
     private fun get(url: String): JSONObject? {
         val connection = (URL(url).openConnection() as HttpURLConnection).apply {

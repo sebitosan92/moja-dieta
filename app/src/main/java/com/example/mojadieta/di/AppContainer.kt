@@ -10,6 +10,12 @@ import com.example.mojadieta.data.images.ImageStorage
 import com.example.mojadieta.data.local.DietDatabase
 import com.example.mojadieta.data.profile.ProfileRepositoryImpl
 import com.example.mojadieta.data.repository.WeightRepositoryImpl
+import com.example.mojadieta.data.repository.ActivityRepository
+import com.example.mojadieta.data.repository.BodyMetricRepository
+import com.example.mojadieta.data.repository.ProductUsageRepository
+import com.example.mojadieta.data.repository.ShoppingRepository
+import com.example.mojadieta.data.settings.SettingsRepository
+import kotlinx.coroutines.flow.first
 import com.example.mojadieta.domain.repository.ProfileRepository
 import com.example.mojadieta.domain.repository.WeightRepository
 import com.example.mojadieta.domain.usecase.CalculateDailyGoalUseCase
@@ -35,7 +41,7 @@ import com.example.mojadieta.domain.usecase.CalculateRecipeNutritionUseCase
 import com.example.mojadieta.domain.usecase.CopyPlannedMealsToDiaryUseCase
 
 /** Ręczny kontener zależności (prosty odpowiednik DI) tworzony raz w klasie Application. */
-class AppContainer(context: Context) {
+class AppContainer(private val context: Context) {
 
     private val database = DietDatabase.getInstance(context)
 
@@ -47,6 +53,19 @@ class AppContainer(context: Context) {
     val productRepository: ProductRepository = ProductRepositoryImpl(database.customProductDao())
     val profileRepository: ProfileRepository = ProfileRepositoryImpl(context)
     val weightRepository: WeightRepository = WeightRepositoryImpl(database.weightDao(), profileRepository)
+
+    val activityRepository = ActivityRepository(context, database.activityDao())
+    val bodyMetricRepository = BodyMetricRepository(database.bodyMetricDao())
+    val productUsageRepository = ProductUsageRepository(database.productUsageDao())
+    val shoppingRepository = ShoppingRepository(database.shoppingDao(), plannerRepository, recipeRepository)
+    val settingsRepository = SettingsRepository(context)
+
+    val statsCalculator = com.example.mojadieta.data.stats.StatsCalculator(
+        diaryRepository, waterRepository, weightRepository, activityRepository,
+        profileRepository, settingsRepository, CalculateDailyGoalUseCase()
+    )
+
+    val backupManager = com.example.mojadieta.data.backup.BackupManager(context)
 
     val imageStorage = ImageStorage(context)
     val productLookup = ProductLookup(productRepository, OpenFoodFactsClient())
@@ -71,8 +90,24 @@ class AppContainer(context: Context) {
      */
     suspend fun syncWeightsFromHealthConnect(): Int? {
         if (healthConnect.availability() != HealthConnectManager.Availability.AVAILABLE) return null
-        if (!healthConnect.hasPermission()) return null
-        return weightRepository.importExternal(healthConnect.readWeights())
+        val granted = healthConnect.grantedPermissions()
+        if (granted.none { it in healthConnect.weightPermissions || it in healthConnect.bodyPermissions }) return null
+        val weights = weightRepository.importExternal(healthConnect.readWeights())
+        val body = bodyMetricRepository.importExternal(healthConnect.readBodyComposition())
+        return weights + body
+    }
+
+    /**
+     * Treningi z ostatnich [days] dni oraz kroki/aktywne kalorie dzień po dniu.
+     * Zwraca liczbę nowych treningów albo null, gdy brak Health Connect lub zgody.
+     */
+    suspend fun syncActivityFromHealthConnect(days: Long = 30): Int? {
+        if (healthConnect.availability() != HealthConnectManager.Availability.AVAILABLE) return null
+        if (!healthConnect.hasAnyActivityPermission()) return null
+        val weight = profileRepository.observeProfile().first()?.weightKg ?: 70.0
+        val added = activityRepository.importExternal(healthConnect.readExercises(days, weight))
+        activityRepository.saveSteps(healthConnect.readDailySteps(days))
+        return added
     }
 
     /** Usuwa pliki zdjęć, których nie używa już żaden przepis ani wpis w dzienniku. */

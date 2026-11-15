@@ -61,6 +61,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.example.mojadieta.data.stats.DayStatus
 import com.example.mojadieta.domain.model.MealType
 import com.example.mojadieta.domain.model.Recipe
 import com.example.mojadieta.ui.theme.CarbsColor
@@ -88,7 +89,8 @@ fun WeekSelector(
     onPreviousWeek: () -> Unit,
     onNextWeek: () -> Unit,
     onDayClick: (LocalDate) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    dayStatuses: Map<LocalDate, DayStatus> = emptyMap()
 ) {
     val today = LocalDate.now()
     Card(
@@ -124,6 +126,7 @@ fun WeekSelector(
                         date = day,
                         isSelected = day == selectedDate,
                         isToday = day == today,
+                        status = dayStatuses[day] ?: DayStatus.NONE,
                         onClick = { onDayClick(day) },
                         modifier = Modifier.weight(1f)
                     )
@@ -139,7 +142,8 @@ private fun DayCell(
     isSelected: Boolean,
     isToday: Boolean,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    status: DayStatus = DayStatus.NONE
 ) {
     val background = when {
         isSelected -> MaterialTheme.colorScheme.primary
@@ -175,10 +179,16 @@ private fun DayCell(
                 .size(5.dp)
                 .clip(CircleShape)
                 .background(
-                    when {
-                        isToday && isSelected -> MaterialTheme.colorScheme.onPrimary
-                        isToday -> MaterialTheme.colorScheme.primary
-                        else -> Color.Transparent
+                    // Zielona = w celu, czerwona = ponad cel, szara = są wpisy, ale nic nie zjedzone.
+                    when (status) {
+                        DayStatus.IN_GOAL -> Color(0xFF2FA36B)
+                        DayStatus.OVER -> Color(0xFFE0645F)
+                        DayStatus.PLANNED_ONLY -> MaterialTheme.colorScheme.outline
+                        DayStatus.NONE -> when {
+                            isToday && isSelected -> MaterialTheme.colorScheme.onPrimary
+                            isToday -> MaterialTheme.colorScheme.primary
+                            else -> Color.Transparent
+                        }
                     }
                 )
         )

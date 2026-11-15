@@ -3,9 +3,11 @@ package com.example.mojadieta.data.importer
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.graphics.Rect
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import com.example.mojadieta.data.images.ImageStorage
+import com.example.mojadieta.domain.importer.OcrPageMerger
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.Text
 import com.google.mlkit.vision.text.TextRecognition
@@ -33,7 +35,8 @@ class TextExtractor(private val context: Context, private val imageStorage: Imag
             parts += recognize(bitmap)
         }
         onProgress(uris.size, uris.size)
-        return parts.joinToString("\n\n")
+        // Kolejne zrzuty przewijanej strony zwykle się pokrywają – wspólny fragment usuwamy.
+        return OcrPageMerger.merge(parts)
     }
 
     suspend fun fromPdf(uri: Uri, onProgress: (done: Int, total: Int) -> Unit): String {
@@ -76,26 +79,62 @@ class TextExtractor(private val context: Context, private val imageStorage: Imag
                 .addOnSuccessListener { cont.resume(it) }
                 .addOnFailureListener { cont.resumeWithException(it) }
         }
-        return orderBlocks(result, bitmap.width)
+        return orderBlocks(result, bitmap.width, bitmap.height)
+    }
+
+    private class Piece(val text: String, val box: Rect)
+
+    /**
+     * Układa tekst w kolejności czytania.
+     * Zrzut ekranu telefonu (wysoki obraz): pomijamy pasek stanu i pasek nawigacji, czytamy wierszami.
+     * Strona dokumentu: jeśli ma dwie kolumny, najpierw czytamy całą lewą, potem prawą.
+     */
+    private fun orderBlocks(text: Text, pageWidth: Int, pageHeight: Int): String {
+        val blocks = text.textBlocks.filter { it.boundingBox != null }
+        if (blocks.isEmpty()) return text.text
+        val screenshot = pageHeight >= pageWidth * 1.6f
+        val top = (pageHeight * 0.045f).toInt()
+        val bottom = (pageHeight * 0.955f).toInt()
+        fun pieces(list: List<Text.TextBlock>) = list.flatMap { block ->
+            block.lines.mapNotNull { line -> line.boundingBox?.let { Piece(line.text, it) } }
+        }.filter { piece -> !screenshot || piece.box.centerY() in top..bottom }
+
+        if (!screenshot) {
+            val half = pageWidth / 2
+            val margin = pageWidth * 0.05
+            val left = blocks.count { it.boundingBox!!.right < half + margin }
+            val right = blocks.count { it.boundingBox!!.left > half - margin }
+            val twoColumns = left >= 3 && right >= 3 && left + right >= blocks.size * 0.8
+            if (twoColumns) {
+                val (l, r) = blocks.partition { it.boundingBox!!.centerX() < half }
+                return (rows(pieces(l), pageWidth) + rows(pieces(r), pageWidth)).joinToString("\n")
+            }
+        }
+        return rows(pieces(blocks), pageWidth).joinToString("\n")
     }
 
     /**
-     * Układa bloki tekstu w kolejności czytania. Jeśli strona ma dwie kolumny,
-     * najpierw czytamy całą lewą, potem prawą.
+     * Grupuje linie w wiersze (po położeniu w pionie). W wierszu elementy blisko siebie łączymy,
+     * a odległe (np. nazwa składnika po lewej i ilość po prawej, kolumny wartości odżywczych) zostawiamy jako osobne linie.
      */
-    private fun orderBlocks(text: Text, pageWidth: Int): String {
-        val blocks = text.textBlocks.filter { it.boundingBox != null }
-        if (blocks.isEmpty()) return text.text
-        val half = pageWidth / 2
-        val left = blocks.count { it.boundingBox!!.right < half + pageWidth * 0.05 }
-        val right = blocks.count { it.boundingBox!!.left > half - pageWidth * 0.05 }
-        val twoColumns = left >= 3 && right >= 3 && left + right >= blocks.size * 0.8
-        val sorted = if (twoColumns) {
-            blocks.sortedWith(compareBy({ if (it.boundingBox!!.centerX() < half) 0 else 1 }, { it.boundingBox!!.top }))
-        } else {
-            blocks.sortedWith(compareBy({ it.boundingBox!!.top / 12 }, { it.boundingBox!!.left }))
+    private fun rows(pieces: List<Piece>, pageWidth: Int): List<String> {
+        val rows = mutableListOf<MutableList<Piece>>()
+        pieces.sortedBy { it.box.top }.forEach { piece ->
+            val row = rows.lastOrNull()
+            val ref = row?.first()?.box
+            if (row != null && ref != null && piece.box.centerY() in ref.top..ref.bottom) row += piece else rows += mutableListOf(piece)
         }
-        return sorted.joinToString("\n") { block -> block.lines.joinToString("\n") { it.text } }
+        val gap = pageWidth * 0.06
+        return rows.flatMap { row ->
+            val out = mutableListOf<StringBuilder>()
+            var lastRight = Int.MIN_VALUE
+            row.sortedBy { it.box.left }.forEach { piece ->
+                if (out.isNotEmpty() && piece.box.left - lastRight < gap) out.last().append(' ').append(piece.text)
+                else out += StringBuilder(piece.text)
+                lastRight = maxOf(lastRight, piece.box.right)
+            }
+            out.map { it.toString() }
+        }
     }
 
     private companion object {

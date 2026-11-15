@@ -52,6 +52,21 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -84,6 +99,10 @@ import com.example.mojadieta.update.UpdateNotifier
 import java.time.DayOfWeek
 
 private val dayShort = listOf("Pn", "Wt", "Śr", "Cz", "Pt", "So", "Nd")
+private val everyDay = listOf(
+    "W każdy poniedziałek", "W każdy wtorek", "W każdą środę", "W każdy czwartek",
+    "W każdy piątek", "W każdą sobotę", "W każdą niedzielę"
+)
 private val dayFull = listOf("poniedziałek", "wtorek", "środa", "czwartek", "piątek", "sobota", "niedziela")
 
 private fun time(h: Int, m: Int) = "%02d:%02d".format(h, m)
@@ -227,9 +246,19 @@ fun SettingsScreen(
                         s.weighReminder
                     ) { checked -> enableReminder { it.copy(weighReminder = checked) } }
                     if (s.weighReminder) {
+                        Text("Dni ważenia (dotknij, aby zaznaczyć lub odznaczyć)", style = MaterialTheme.typography.labelMedium)
                         DayChips(selected = s.weighDays) { day ->
                             viewModel.update {
                                 it.copy(weighDays = if (day in it.weighDays) it.weighDays - day else it.weighDays + day)
+                            }
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            listOf(
+                                "Codziennie" to DayOfWeek.entries.toSet(),
+                                "Pn–Pt" to WORK_DAYS,
+                                "Raz w tygodniu" to setOf(DayOfWeek.MONDAY)
+                            ).forEach { (label, days) ->
+                                TextButton(onClick = { viewModel.update { it.copy(weighDays = days) } }) { Text(label) }
                             }
                         }
                         TimeButton("Godzina", time(s.weighHour, s.weighMinute)) { timeTarget = TimeTarget.Weigh }
@@ -262,11 +291,23 @@ fun SettingsScreen(
                     MealType.entries.forEach { type ->
                         val r = s.mealReminders.getValue(type)
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(type.label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-                            TextButton(onClick = { timeTarget = TimeTarget.Meal(type) }, enabled = r.enabled) {
-                                Text(time(r.hour, r.minute))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(type.label, style = MaterialTheme.typography.bodyLarge)
+                                    Spacer(Modifier.width(8.dp))
+                                    StatusBadge(r.enabled)
+                                }
+                                Text(
+                                    if (r.enabled) "Codziennie o ${time(r.hour, r.minute)}" else "Bez przypomnienia",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (r.enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
-                            Switch(checked = r.enabled, onCheckedChange = { checked ->
+                            if (r.enabled) {
+                                OutlinedButton(onClick = { timeTarget = TimeTarget.Meal(type) }) { Text(time(r.hour, r.minute)) }
+                                Spacer(Modifier.width(8.dp))
+                            }
+                            ClearSwitch(checked = r.enabled, onCheckedChange = { checked ->
                                 enableReminder { it.copy(mealReminders = it.mealReminders + (type to r.copy(enabled = checked))) }
                             })
                         }
@@ -280,6 +321,7 @@ fun SettingsScreen(
                         s.planningReminder
                     ) { checked -> enableReminder { it.copy(planningReminder = checked) } }
                     if (s.planningReminder) {
+                        Text("Dzień przypomnienia", style = MaterialTheme.typography.labelMedium)
                         DayChips(selected = setOf(s.planningDay), single = true) { day -> viewModel.update { it.copy(planningDay = day) } }
                         TimeButton("Godzina", time(s.planningHour, 0)) { timeTarget = TimeTarget.Planning }
                     }
@@ -440,14 +482,53 @@ private fun RadioRow(label: String, description: String?, selected: Boolean, onC
 
 @Composable
 private fun SwitchRow(title: String, description: String, checked: Boolean, onChange: (Boolean) -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.toggleable(value = checked, role = Role.Switch, onValueChange = onChange)
+    ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(title, style = MaterialTheme.typography.bodyLarge)
+                Spacer(Modifier.width(8.dp))
+                StatusBadge(checked)
+            }
             Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Spacer(Modifier.width(8.dp))
-        Switch(checked = checked, onCheckedChange = onChange)
+        ClearSwitch(checked = checked, onCheckedChange = null)
     }
+}
+
+/** „WŁ.” na kolorowym tle albo „WYŁ.” w obrysie – stan widać bez patrzenia na przełącznik. */
+@Composable
+private fun StatusBadge(on: Boolean) {
+    Text(
+        if (on) "WŁ." else "WYŁ.",
+        style = MaterialTheme.typography.labelMedium,
+        fontWeight = FontWeight.Bold,
+        color = if (on) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(if (on) MaterialTheme.colorScheme.primary else Color.Transparent)
+            .border(1.dp, if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline, RoundedCornerShape(6.dp))
+            .padding(horizontal = 6.dp, vertical = 1.dp)
+    )
+}
+
+/** Przełącznik z ptaszkiem (włączony) albo krzyżykiem (wyłączony) na kółku. */
+@Composable
+private fun ClearSwitch(checked: Boolean, onCheckedChange: ((Boolean) -> Unit)?) {
+    Switch(
+        checked = checked,
+        onCheckedChange = onCheckedChange,
+        thumbContent = {
+            Icon(
+                if (checked) Icons.Outlined.Check else Icons.Outlined.Close,
+                contentDescription = null,
+                modifier = Modifier.size(SwitchDefaults.IconSize)
+            )
+        }
+    )
 }
 
 @Composable
@@ -455,26 +536,74 @@ private fun TimeButton(label: String, value: String, onClick: () -> Unit) {
     OutlinedButton(onClick = onClick) { Text("$label: $value") }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+/** Dni tygodnia jako kółka: zaznaczone = wypełnione kolorem z ptaszkiem, niezaznaczone = sam obrys. */
 @Composable
 private fun DayChips(selected: Set<DayOfWeek>, single: Boolean = false, onToggle: (DayOfWeek) -> Unit) {
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        DayOfWeek.entries.forEachIndexed { index, day ->
-            FilterChip(
-                selected = day in selected,
-                onClick = { onToggle(day) },
-                label = { Text(if (single) dayFull[index] else dayShort[index]) }
-            )
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            DayOfWeek.entries.forEachIndexed { index, day ->
+                val on = day in selected
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(if (on) MaterialTheme.colorScheme.primary else Color.Transparent)
+                        .border(
+                            1.5.dp,
+                            if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                            CircleShape
+                        )
+                        .toggleable(value = on, role = Role.Checkbox, onValueChange = { onToggle(day) })
+                        .semantics { contentDescription = dayFull[index] + if (on) ", zaznaczony" else ", niezaznaczony" },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        dayShort[index],
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = if (on) FontWeight.Bold else FontWeight.Normal,
+                        color = if (on) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
         }
+        val summary = when {
+            single -> selected.firstOrNull()?.let { everyDay[it.value - 1] } ?: "Wybierz dzień"
+            selected.isEmpty() -> "Nie wybrano żadnego dnia – przypomnienie się nie pojawi"
+            selected.size == 7 -> "Codziennie"
+            selected == WORK_DAYS -> "W dni robocze (Pn–Pt)"
+            selected == WEEKEND -> "W weekend"
+            else -> DayOfWeek.entries.filter { it in selected }.joinToString(", ") { dayShort[it.value - 1] }
+        }
+        Text(
+            summary,
+            style = MaterialTheme.typography.bodySmall,
+            color = if (!single && selected.isEmpty()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+        )
     }
 }
+
+private val WORK_DAYS = setOf(DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY)
+private val WEEKEND = setOf(DayOfWeek.SATURDAY, DayOfWeek.SUNDAY)
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun <T> ChipRow(options: List<T>, selected: T, label: (T) -> String, onSelect: (T) -> Unit) {
     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         options.forEach { option ->
-            FilterChip(selected = option == selected, onClick = { onSelect(option) }, label = { Text(label(option)) })
+            val on = option == selected
+            FilterChip(
+                selected = on,
+                onClick = { onSelect(option) },
+                label = { Text(label(option)) },
+                leadingIcon = if (on) {
+                    { Icon(Icons.Outlined.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                } else null,
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = MaterialTheme.colorScheme.primary,
+                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                    selectedLeadingIconColor = MaterialTheme.colorScheme.onPrimary
+                )
+            )
         }
     }
 }

@@ -56,6 +56,22 @@ import com.example.mojadieta.ui.AppViewModelProvider
 import com.example.mojadieta.ui.components.EmptyState
 import com.example.mojadieta.ui.components.MacroInlineRow
 
+import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Button
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import kotlinx.coroutines.launch
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RecipesScreen(
@@ -65,12 +81,18 @@ fun RecipesScreen(
     viewModel: RecipesViewModel = viewModel(factory = AppViewModelProvider.Factory)
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    var showFridgeSheet by rememberSaveable { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Baza przepisów") },
                 actions = {
+                    TextButton(onClick = { showFridgeSheet = true }) {
+                        Icon(Icons.Outlined.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Lodówka AI")
+                    }
                     TextButton(onClick = onImport) {
                         Icon(Icons.Outlined.FileDownload, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
@@ -179,6 +201,15 @@ fun RecipesScreen(
             }
         }
     }
+
+    if (showFridgeSheet) {
+        FridgeRecipeSheet(
+            onDismiss = { showFridgeSheet = false },
+            hasApiKey = viewModel.hasApiKey,
+            onGenerate = viewModel::generateFridgeRecipes,
+            onSaveRecipe = viewModel::saveFridgeRecipeAsRecipe
+        )
+    }
 }
 
 @Composable
@@ -250,6 +281,165 @@ private fun RecipeCard(recipe: Recipe, onClick: () -> Unit, onToggleFavorite: ()
                 )
                 Text("${recipe.calories}", style = MaterialTheme.typography.titleMedium)
                 Text("kcal", style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FridgeRecipeSheet(
+    onDismiss: () -> Unit,
+    hasApiKey: Boolean,
+    onGenerate: suspend (String) -> Result<List<com.example.mojadieta.data.vision.FridgeRecipeSuggestion>>,
+    onSaveRecipe: suspend (com.example.mojadieta.data.vision.FridgeRecipeSuggestion) -> Long
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var ingredients by rememberSaveable { mutableStateOf("") }
+    var isGenerating by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var suggestions by remember { mutableStateOf<List<com.example.mojadieta.data.vision.FridgeRecipeSuggestion>>(emptyList()) }
+    var savedTitles by remember { mutableStateOf<Set<String>>(emptySet()) }
+    val scope = rememberCoroutineScope()
+
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Outlined.AutoAwesome,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("Lodówka AI", style = MaterialTheme.typography.titleLarge)
+                }
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Outlined.Close, contentDescription = "Zamknij")
+                }
+            }
+
+            Text(
+                "Wpisz składniki, które masz w lodówce lub spiżarni. AI Gemini stworzy dla Ciebie zdrowe i proste propozycje dań z wyliczonymi kaloriami!",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            if (!hasApiKey) {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                    shape = MaterialTheme.shapes.medium
+                ) {
+                    Text(
+                        "Aby skorzystać z Lodówki AI, skonfiguruj bezpłatny klucz Gemini API w Ustawieniach aplikacji.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.padding(14.dp)
+                    )
+                }
+            } else {
+                OutlinedTextField(
+                    value = ingredients,
+                    onValueChange = { ingredients = it },
+                    label = { Text("Co masz w lodówce / domu?") },
+                    placeholder = { Text("np. 3 jajka, pomidor, cebula, makaron, puszka tuńczyka…") },
+                    modifier = Modifier.fillMaxWidth(),
+                    maxLines = 4
+                )
+
+                Button(
+                    onClick = {
+                        scope.launch {
+                            isGenerating = true
+                            errorMessage = null
+                            val result = onGenerate(ingredients)
+                            isGenerating = false
+                            result.fold(
+                                onSuccess = { list -> suggestions = list },
+                                onFailure = { err -> errorMessage = err.message ?: "Błąd generowania dań." }
+                            )
+                        }
+                    },
+                    enabled = !isGenerating && ingredients.isNotBlank(),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    if (isGenerating) {
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Szef kuchni AI myśli…")
+                    } else {
+                        Icon(Icons.Outlined.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Zaproponuj dania")
+                    }
+                }
+
+                if (errorMessage != null) {
+                    Text(errorMessage.orEmpty(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                }
+
+                if (suggestions.isNotEmpty()) {
+                    Text("Propozycje dań:", style = MaterialTheme.typography.titleMedium)
+                    suggestions.forEach { recipe ->
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+                            shape = MaterialTheme.shapes.medium,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text(recipe.title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                                if (recipe.description.isNotBlank()) {
+                                    Text(recipe.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("${recipe.calories} kcal", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                                    Spacer(Modifier.width(10.dp))
+                                    MacroInlineRow(recipe.protein, recipe.carbs, recipe.fat)
+                                }
+                                Text("Składniki:", style = MaterialTheme.typography.labelMedium)
+                                recipe.ingredients.forEach { ing ->
+                                    Text("• $ing", style = MaterialTheme.typography.bodySmall)
+                                }
+                                Text("Przygotowanie:", style = MaterialTheme.typography.labelMedium)
+                                recipe.instructions.forEachIndexed { idx, step ->
+                                    Text("${idx + 1}. $step", style = MaterialTheme.typography.bodySmall)
+                                }
+                                Spacer(Modifier.height(4.dp))
+                                val isSaved = recipe.title in savedTitles
+                                FilledTonalButton(
+                                    onClick = {
+                                        scope.launch {
+                                            onSaveRecipe(recipe)
+                                            savedTitles = savedTitles + recipe.title
+                                        }
+                                    },
+                                    enabled = !isSaved,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(
+                                        if (isSaved) Icons.Outlined.Check else Icons.Outlined.Add,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(if (isSaved) "Zapisano do przepisów ✓" else "Zapisz jako przepis")
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }

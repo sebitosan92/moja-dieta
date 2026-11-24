@@ -239,6 +239,7 @@ fun DiaryScreen(
             imageStorage = viewModel.imageStorage,
             hasApiKey = state.settings.geminiApiKey.isNotBlank(),
             onRecognizeMeal = viewModel::recognizeMealFromPhoto,
+            onRecognizeMealText = viewModel::recognizeMealFromText,
             onDismiss = { addMealFor = null },
             onRecipeSelected = { recipe, type, servings, imagePath ->
                 viewModel.addRecipeMeal(recipe, type, servings, imagePath)
@@ -270,7 +271,8 @@ fun DiaryScreen(
             startWithScanner = productPickerScan,
             recentNames = recentProducts.map { it.name },
             favoriteNames = favoriteProducts.map { it.name },
-            onToggleFavorite = { viewModel.toggleFavoriteProduct(it.name) }
+            onToggleFavorite = { viewModel.toggleFavoriteProduct(it.name) },
+            onScanNutritionLabel = viewModel::recognizeNutritionLabel
         )
     }
 

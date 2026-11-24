@@ -44,7 +44,8 @@ object AppViewModelProvider {
             )
         }
         initializer {
-            RecipesViewModel(container().recipeRepository)
+            val c = container()
+            RecipesViewModel(c.recipeRepository, c.settingsRepository, c.mealVisionRecognizer)
         }
         initializer {
             val c = container()

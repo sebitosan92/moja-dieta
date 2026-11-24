@@ -1,9 +1,17 @@
 package com.example.mojadieta.ui.recipes
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.StarBorder
+import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.clickable
 import kotlinx.coroutines.launch
+import java.io.File
+import com.example.mojadieta.data.vision.NutritionLabelResult
 import com.example.mojadieta.ui.components.BarcodeScannerDialog
 import com.example.mojadieta.data.food.ProductLookup
 import com.example.mojadieta.data.food.BarcodeResult
@@ -99,7 +107,8 @@ fun IngredientPickerSheet(
     /** Ostatnio używane (od najnowszego) i ulubione – trafiają na górę listy. */
     recentNames: List<String> = emptyList(),
     favoriteNames: List<String> = emptyList(),
-    onToggleFavorite: ((FoodProduct) -> Unit)? = null
+    onToggleFavorite: ((FoodProduct) -> Unit)? = null,
+    onScanNutritionLabel: (suspend (File) -> Result<NutritionLabelResult>)? = null
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
@@ -158,7 +167,8 @@ fun IngredientPickerSheet(
                     onBack = { step = PickerStep.Search },
                     onSave = { product ->
                         scope.launch { step = PickerStep.Amount(lookup.save(product)) }
-                    }
+                    },
+                    onScanNutritionLabel = onScanNutritionLabel
                 )
 
                 is PickerStep.Loading -> Row(
@@ -509,7 +519,8 @@ private fun CustomProductStep(
     barcode: String?,
     message: String?,
     onBack: () -> Unit,
-    onSave: (FoodProduct) -> Unit
+    onSave: (FoodProduct) -> Unit,
+    onScanNutritionLabel: (suspend (File) -> Result<NutritionLabelResult>)? = null
 ) {
     var name by rememberSaveable { mutableStateOf(initialName.replaceFirstChar { it.uppercase() }) }
     var kcal by rememberSaveable { mutableStateOf("") }
@@ -520,6 +531,47 @@ private fun CustomProductStep(
     var sugar by rememberSaveable { mutableStateOf("") }
     var salt by rememberSaveable { mutableStateOf("") }
     var showErrors by rememberSaveable { mutableStateOf(false) }
+
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var isAnalyzingLabel by remember { mutableStateOf(false) }
+    var labelErrorMessage by remember { mutableStateOf<String?>(null) }
+
+    val pickPhotoLauncher = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null && onScanNutritionLabel != null) {
+            scope.launch {
+                isAnalyzingLabel = true
+                labelErrorMessage = null
+                val tempFile = File(context.cacheDir, "temp_label_${System.currentTimeMillis()}.jpg")
+                val stream = context.contentResolver.openInputStream(uri)
+                if (stream != null) {
+                    tempFile.outputStream().use { stream.copyTo(it) }
+                    val result = onScanNutritionLabel(tempFile)
+                    result.fold(
+                        onSuccess = { res ->
+                            if (res.name.isNotBlank() && res.name != "Produkt z etykiety" && res.name != "Pusty") {
+                                name = res.name
+                            }
+                            kcal = res.caloriesPer100g.toString()
+                            protein = formatGrams(res.proteinPer100g)
+                            carbs = formatGrams(res.carbsPer100g)
+                            fat = formatGrams(res.fatPer100g)
+                            res.fiberPer100g?.let { fiber = formatGrams(it) }
+                            res.sugarPer100g?.let { sugar = formatGrams(it) }
+                            res.saltPer100g?.let { salt = formatGrams(it) }
+                        },
+                        onFailure = { err ->
+                            labelErrorMessage = err.message ?: "Błąd odczytu etykiety."
+                        }
+                    )
+                    tempFile.delete()
+                } else {
+                    labelErrorMessage = "Nie udało się odczytać zdjęcia."
+                }
+                isAnalyzingLabel = false
+            }
+        }
+    }
 
     val kcalValue = parseDecimal(kcal)
     val proteinValue = if (protein.isBlank()) 0.0 else parseDecimal(protein)
@@ -534,11 +586,38 @@ private fun CustomProductStep(
             Text("Własny produkt", style = MaterialTheme.typography.titleLarge)
         }
         Text(
-            "Przepisz wartości odżywcze na 100 g z etykiety. Produkt zapisze się w Twojej bazie.",
+            "Przepisz wartości odżywcze na 100 g z etykiety lub zeskanuj je ze zdjęcia. Produkt zapisze się w Twojej bazie.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(start = 12.dp, bottom = 12.dp)
         )
+        if (onScanNutritionLabel != null) {
+            FilledTonalButton(
+                onClick = { pickPhotoLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                enabled = !isAnalyzingLabel,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp)
+            ) {
+                if (isAnalyzingLabel) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Odczytuję tabelę z etykiety (AI)…")
+                } else {
+                    Icon(Icons.Outlined.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Zeskanuj tabelę ze zdjęcia (AI Gemini)")
+                }
+            }
+            if (labelErrorMessage != null) {
+                Text(
+                    labelErrorMessage.orEmpty(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+            }
+        }
         if (message != null) {
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),

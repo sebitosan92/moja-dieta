@@ -27,6 +27,15 @@ import com.example.mojadieta.update.UpdateNotifier
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Surface
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
@@ -214,30 +223,67 @@ private fun AppScaffold(navController: NavHostController, updateViewModel: Updat
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = backStackEntry?.destination
     val showBottomBar = TopLevelDestination.entries.any { it.route == currentDestination?.route }
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
 
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         bottomBar = {
             if (showBottomBar) {
-                NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest) {
-                    TopLevelDestination.entries.forEach { destination ->
-                        val selected = currentDestination?.hierarchy?.any { it.route == destination.route } == true
-                        NavigationBarItem(
-                            selected = selected,
-                            onClick = { navController.navigateToTopLevel(destination.route) },
-                            icon = {
-                                Icon(
-                                    if (selected) destination.selectedIcon else destination.unselectedIcon,
-                                    contentDescription = destination.label
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(28.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerLowest,
+                        tonalElevation = 6.dp,
+                        shadowElevation = 8.dp,
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        NavigationBar(
+                            containerColor = Color.Transparent,
+                            tonalElevation = 0.dp,
+                            modifier = Modifier.height(64.dp)
+                        ) {
+                            TopLevelDestination.entries.forEach { destination ->
+                                val selected = currentDestination?.hierarchy?.any { it.route == destination.route } == true
+                                NavigationBarItem(
+                                    selected = selected,
+                                    onClick = {
+                                        if (!selected) {
+                                            haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                                        }
+                                        navController.navigateToTopLevel(destination.route)
+                                    },
+                                    icon = {
+                                        Icon(
+                                            if (selected) destination.selectedIcon else destination.unselectedIcon,
+                                            contentDescription = destination.label
+                                        )
+                                    },
+                                    label = {
+                                        Text(
+                                            destination.label,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
+                                        )
+                                    },
+                                    colors = NavigationBarItemDefaults.colors(
+                                        indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                                        selectedIconColor = MaterialTheme.colorScheme.primary,
+                                        selectedTextColor = MaterialTheme.colorScheme.primary,
+                                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
                                 )
-                            },
-                            label = { Text(destination.label) },
-                            colors = NavigationBarItemDefaults.colors(
-                                indicatorColor = MaterialTheme.colorScheme.primaryContainer,
-                                selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                                selectedTextColor = MaterialTheme.colorScheme.primary
-                            )
-                        )
+                            }
+                        }
                     }
                 }
             }

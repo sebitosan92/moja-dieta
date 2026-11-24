@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
@@ -95,10 +96,11 @@ fun WeekSelector(
     val today = LocalDate.now()
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest)
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
-        Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 12.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
@@ -108,7 +110,8 @@ fun WeekSelector(
                 }
                 Text(
                     text = weekRangeLabel(weekStart),
-                    style = MaterialTheme.typography.titleSmall,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.weight(1f)
                 )
@@ -116,9 +119,10 @@ fun WeekSelector(
                     Icon(Icons.Filled.ChevronRight, contentDescription = "Następny tydzień")
                 }
             }
+            Spacer(Modifier.height(4.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 for (offset in 0L..6L) {
                     val day = weekStart.plusDays(offset)
@@ -147,51 +151,59 @@ private fun DayCell(
 ) {
     val background = when {
         isSelected -> MaterialTheme.colorScheme.primary
-        isToday -> MaterialTheme.colorScheme.primaryContainer
-        else -> Color.Transparent
+        isToday -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+        else -> MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.7f)
     }
     val contentColor = when {
         isSelected -> MaterialTheme.colorScheme.onPrimary
+        isToday -> MaterialTheme.colorScheme.primary
         else -> MaterialTheme.colorScheme.onSurface
     }
-    Column(
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = background,
+        border = if (isToday && !isSelected) androidx.compose.foundation.BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary) else null,
         modifier = modifier
-            .clip(MaterialTheme.shapes.medium)
-            .background(background)
+            .clip(RoundedCornerShape(20.dp))
             .clickable(onClick = onClick)
-            .padding(vertical = 8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(
-            text = date.shortDayName(),
-            style = MaterialTheme.typography.labelMedium,
-            color = if (isSelected) contentColor else MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Spacer(Modifier.height(4.dp))
-        Text(
-            text = date.dayOfMonth.toString(),
-            style = MaterialTheme.typography.titleMedium,
-            color = contentColor
-        )
-        Spacer(Modifier.height(4.dp))
-        Box(
-            modifier = Modifier
-                .size(5.dp)
-                .clip(CircleShape)
-                .background(
-                    // Zielona = w celu, czerwona = ponad cel, szara = są wpisy, ale nic nie zjedzone.
-                    when (status) {
-                        DayStatus.IN_GOAL -> Color(0xFF2FA36B)
-                        DayStatus.OVER -> Color(0xFFE0645F)
-                        DayStatus.PLANNED_ONLY -> MaterialTheme.colorScheme.outline
-                        DayStatus.NONE -> when {
-                            isToday && isSelected -> MaterialTheme.colorScheme.onPrimary
-                            isToday -> MaterialTheme.colorScheme.primary
-                            else -> Color.Transparent
+        Column(
+            modifier = Modifier.padding(vertical = 10.dp, horizontal = 2.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = date.shortDayName(),
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                color = if (isSelected) contentColor else MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = date.dayOfMonth.toString(),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = if (isSelected || isToday) FontWeight.Bold else FontWeight.Normal,
+                color = contentColor
+            )
+            Spacer(Modifier.height(6.dp))
+            Box(
+                modifier = Modifier
+                    .size(6.dp)
+                    .clip(CircleShape)
+                    .background(
+                        // Zielona = w celu, czerwona = ponad cel, szara = są wpisy, ale nic nie zjedzone.
+                        when (status) {
+                            DayStatus.IN_GOAL -> Color(0xFF2FA36B)
+                            DayStatus.OVER -> Color(0xFFE0645F)
+                            DayStatus.PLANNED_ONLY -> MaterialTheme.colorScheme.outline
+                            DayStatus.NONE -> when {
+                                isToday && isSelected -> MaterialTheme.colorScheme.onPrimary
+                                isToday -> MaterialTheme.colorScheme.primary
+                                else -> Color.Transparent
+                            }
                         }
-                    }
-                )
-        )
+                    )
+            )
+        }
     }
 }
 

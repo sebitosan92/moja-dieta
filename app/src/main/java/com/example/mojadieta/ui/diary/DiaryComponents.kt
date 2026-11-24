@@ -1,5 +1,10 @@
 package com.example.mojadieta.ui.diary
 
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.DoneAll
 import androidx.compose.material.icons.outlined.Replay
@@ -30,6 +35,9 @@ import com.example.mojadieta.domain.model.WeightEntry
 import com.example.mojadieta.domain.model.DailyGoal
 import com.example.mojadieta.data.images.ImageStorage
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Surface
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.FilterChip
@@ -111,112 +119,171 @@ fun DaySummaryCard(
 ) {
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest)
+        shape = RoundedCornerShape(26.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Podsumowanie dnia", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "Podsumowanie dnia",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    if (goal != null) {
+                        val left = goal.calories - eaten.calories
+                        Text(
+                            text = if (left >= 0) "Pozostało $left kcal" else "Przekroczono o ${-left} kcal",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Medium,
+                            color = if (left >= 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary
+                        )
+                    }
+                }
+                if (goal != null) {
+                    val isUnder = eaten.calories <= goal.calories
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (isUnder) Color(0xFF2FA36B).copy(alpha = 0.12f) else MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f),
+                        modifier = Modifier.padding(end = 4.dp)
+                    ) {
+                        Text(
+                            text = if (isUnder) "W CELU" else "PONAD CEL",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isUnder) Color(0xFF1E754B) else MaterialTheme.colorScheme.tertiary,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                }
                 TextButton(onClick = onSetGoal) {
                     Icon(Icons.Outlined.Flag, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text(if (goal == null) "Ustaw cel" else "Cel")
+                    Text(if (goal == null) "Ustaw cel" else "Zmień cel")
                 }
             }
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(14.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(contentAlignment = Alignment.Center, modifier = Modifier.size(116.dp)) {
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.size(122.dp)) {
                     val reference = goal?.calories ?: total.calories
                     val progress = if (reference > 0) eaten.calories.toFloat() / reference else 0f
                     val over = goal != null && eaten.calories > goal.calories
                     CircularProgressIndicator(
                         progress = { progress.coerceIn(0f, 1f) },
-                        modifier = Modifier.size(116.dp),
-                        strokeWidth = 10.dp,
+                        modifier = Modifier.size(122.dp),
+                        strokeWidth = 11.dp,
                         color = if (over) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary,
-                        trackColor = MaterialTheme.colorScheme.primaryContainer,
+                        trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
                         strokeCap = StrokeCap.Round
                     )
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
                             text = eaten.calories.toString(),
-                            style = MaterialTheme.typography.headlineSmall,
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.ExtraBold,
                             color = MaterialTheme.colorScheme.primary
                         )
                         Text(
                             if (goal != null) "z ${goal.calories} kcal" else "kcal zjedzone",
-                            style = MaterialTheme.typography.bodySmall
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
-                Spacer(Modifier.width(20.dp))
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    MacroProgress("Białko", eaten.protein, goal?.protein?.toDouble() ?: total.protein, ProteinColor)
-                    MacroProgress("Węglowodany", eaten.carbs, goal?.carbs?.toDouble() ?: total.carbs, CarbsColor)
-                    MacroProgress("Tłuszcze", eaten.fat, goal?.fat?.toDouble() ?: total.fat, FatColor)
+                Spacer(Modifier.width(16.dp))
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    MacroProgress("Białko", "B", eaten.protein, goal?.protein?.toDouble() ?: total.protein, ProteinColor)
+                    MacroProgress("Węgle", "W", eaten.carbs, goal?.carbs?.toDouble() ?: total.carbs, CarbsColor)
+                    MacroProgress("Tłuszcze", "T", eaten.fat, goal?.fat?.toDouble() ?: total.fat, FatColor)
                 }
             }
-            Spacer(Modifier.height(12.dp))
-            if (goal != null) {
-                val left = goal.calories - eaten.calories
-                Text(
-                    text = if (left >= 0) "Zostało $left kcal" else "Cel przekroczony o ${-left} kcal",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = if (left >= 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary
-                )
-            }
-            Text(
-                text = "W dzienniku: ${total.calories} kcal · zaznacz posiłki jako zjedzone (albo przesuń w prawo), aby je zliczyć",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            val extras = listOfNotNull(
-                eaten.fiber?.let { "błonnik ${formatGrams(it)} g" },
-                eaten.sugar?.let { "cukry ${formatGrams(it)} g" },
-                eaten.salt?.let { "sól ${formatGrams(it)} g" }
-            )
-            if (extras.isNotEmpty()) {
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    extras.joinToString(" · ") + if (eaten.extrasIncomplete) " (część wpisów bez danych)" else "",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            if (activityMinutes > 0) {
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "Aktywność: $activityMinutes min, ok. $activityCalories kcal spalonych – informacyjnie, cel się nie zmienia",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.secondary
-                )
+            Spacer(Modifier.height(14.dp))
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.5f),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                    Text(
+                        text = "W dzienniku: ${total.calories} kcal · przesuwaj posiłki w prawo, by oznaczyć zjedzone",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    val extras = listOfNotNull(
+                        eaten.fiber?.let { "błonnik ${formatGrams(it)} g" },
+                        eaten.sugar?.let { "cukry ${formatGrams(it)} g" },
+                        eaten.salt?.let { "sól ${formatGrams(it)} g" }
+                    )
+                    if (extras.isNotEmpty()) {
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            extras.joinToString(" · ") + if (eaten.extrasIncomplete) " (część wpisów bez danych)" else "",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    if (activityMinutes > 0) {
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            "Aktywność: $activityMinutes min, ok. $activityCalories kcal spalonych",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.secondary
+                        )
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
-private fun MacroProgress(label: String, eaten: Double, target: Double, color: Color) {
-    Column {
-        Row(modifier = Modifier.fillMaxWidth()) {
-            Text(label, style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
-            Text(
-                "${formatGrams(eaten)} / ${formatGrams(target)} g",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+private fun MacroProgress(label: String, badge: String, eaten: Double, target: Double, color: Color) {
+    val pct = if (target > 0) (eaten / target).toFloat().coerceIn(0f, 1f) else 0f
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = color.copy(alpha = 0.08f),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(18.dp)
+                        .clip(CircleShape)
+                        .background(color),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(badge, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color.White)
+                }
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    label,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    "${formatGrams(eaten)}/${formatGrams(target)}g",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+            Spacer(Modifier.height(4.dp))
+            LinearProgressIndicator(
+                progress = { pct },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(5.dp),
+                color = color,
+                trackColor = color.copy(alpha = 0.2f),
+                strokeCap = StrokeCap.Round,
+                drawStopIndicator = {}
             )
         }
-        Spacer(Modifier.height(4.dp))
-        LinearProgressIndicator(
-            progress = { if (target > 0) (eaten / target).toFloat().coerceIn(0f, 1f) else 0f },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(6.dp),
-            color = color,
-            trackColor = color.copy(alpha = 0.18f),
-            strokeCap = StrokeCap.Round,
-            drawStopIndicator = {}
-        )
     }
 }
 
@@ -226,17 +293,26 @@ fun WeightCard(latest: WeightEntry?, onOpen: () -> Unit, modifier: Modifier = Mo
     Card(
         onClick = onOpen,
         modifier = modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest)
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(Icons.Outlined.MonitorWeight, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-            Spacer(Modifier.width(12.dp))
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
+                modifier = Modifier.size(40.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(Icons.Outlined.MonitorWeight, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
+                }
+            }
+            Spacer(Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text("Waga", style = MaterialTheme.typography.titleMedium)
+                Text("Waga", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Text(
                     if (latest == null) "Dodaj pierwszy pomiar lub połącz z Health Connect"
                     else "Ostatni pomiar: ${latest.date.dayMonth()}",
@@ -248,10 +324,18 @@ fun WeightCard(latest: WeightEntry?, onOpen: () -> Unit, modifier: Modifier = Mo
                 Text(
                     "${formatGrams(latest.weightKg)} kg",
                     style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
                 )
             } else {
-                Icon(Icons.Outlined.Add, contentDescription = null)
+                FilledTonalButton(
+                    onClick = onOpen,
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Dodaj")
+                }
             }
         }
     }
@@ -266,10 +350,18 @@ fun WaterCard(
     modifier: Modifier = Modifier
 ) {
     var showGoalDialog by rememberSaveable { mutableStateOf(false) }
+    val haptic = LocalHapticFeedback.current
+    val animatedProgress by animateFloatAsState(
+        targetValue = water.progress,
+        animationSpec = spring(stiffness = Spring.StiffnessLow),
+        label = "waterProgress"
+    )
+
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(containerColor = AppColors.waterContainer)
+        shape = RoundedCornerShape(26.dp),
+        colors = CardDefaults.cardColors(containerColor = AppColors.waterContainer),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -304,7 +396,7 @@ fun WaterCard(
             }
             Spacer(Modifier.height(8.dp))
             LinearProgressIndicator(
-                progress = { water.progress },
+                progress = { animatedProgress },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(10.dp),
@@ -316,12 +408,30 @@ fun WaterCard(
             Spacer(Modifier.height(14.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 OutlinedButton(
-                    onClick = { onChange(-250) },
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onChange(-250)
+                    },
+                    shape = RoundedCornerShape(14.dp),
                     enabled = water.amountMl > 0,
                     modifier = Modifier.weight(1f)
                 ) { Text("-250 ml") }
-                FilledTonalButton(onClick = { onChange(250) }, modifier = Modifier.weight(1f)) { Text("+250 ml") }
-                FilledTonalButton(onClick = { onChange(500) }, modifier = Modifier.weight(1f)) { Text("+500 ml") }
+                FilledTonalButton(
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onChange(250)
+                    },
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.weight(1f)
+                ) { Text("+250 ml") }
+                FilledTonalButton(
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onChange(500)
+                    },
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.weight(1f)
+                ) { Text("+500 ml") }
             }
         }
     }
@@ -388,19 +498,36 @@ fun MealSectionCard(
     var menu by remember { mutableStateOf(false) }
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest)
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
-        Column(modifier = Modifier.padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 4.dp)) {
+        Column(modifier = Modifier.padding(start = 16.dp, end = 12.dp, top = 14.dp, bottom = 8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(mealType.icon(), contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                Spacer(Modifier.width(10.dp))
-                Text(mealType.label, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                Text(
-                    text = "${entries.sumOf { it.calories }} kcal",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
+                    modifier = Modifier.size(38.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(mealType.icon(), contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                    }
+                }
+                Spacer(Modifier.width(12.dp))
+                Text(mealType.label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh
+                ) {
+                    Text(
+                        text = "${entries.sumOf { it.calories }} kcal",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+                Spacer(Modifier.width(4.dp))
                 Box {
                     IconButton(onClick = { menu = true }) {
                         Icon(Icons.Outlined.MoreVert, contentDescription = "Więcej opcji: ${mealType.label}")
@@ -422,7 +549,7 @@ fun MealSectionCard(
                 }
             }
             if (entries.isNotEmpty()) {
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(8.dp))
                 entries.forEachIndexed { index, entry ->
                     if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     key(entry.id) {
@@ -440,10 +567,27 @@ fun MealSectionCard(
                     }
                 }
             }
-            TextButton(onClick = onAddClick) {
-                Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(4.dp))
-                Text("Dodaj posiłek")
+            Spacer(Modifier.height(4.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                FilledTonalButton(
+                    onClick = onAddClick,
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Dodaj posiłek")
+                }
+                if (entries.isEmpty()) {
+                    TextButton(onClick = onRepeatYesterday) {
+                        Icon(Icons.Outlined.Replay, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Powtórz z wczoraj")
+                    }
+                }
             }
         }
     }
@@ -455,12 +599,19 @@ fun MealSectionCard(
 private fun SwipeableEntry(onSwipeRight: () -> Unit, onSwipeLeft: () -> Unit, content: @Composable () -> Unit) {
     val state = rememberSwipeToDismissBoxState()
     val scope = rememberCoroutineScope()
+    val haptic = LocalHapticFeedback.current
     SwipeToDismissBox(
         state = state,
         onDismiss = { value ->
             when (value) {
-                SwipeToDismissBoxValue.StartToEnd -> onSwipeRight()
-                SwipeToDismissBoxValue.EndToStart -> onSwipeLeft()
+                SwipeToDismissBoxValue.StartToEnd -> {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onSwipeRight()
+                }
+                SwipeToDismissBoxValue.EndToStart -> {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onSwipeLeft()
+                }
                 else -> Unit
             }
             scope.launch { state.snapTo(SwipeToDismissBoxValue.Settled) }

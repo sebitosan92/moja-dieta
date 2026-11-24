@@ -343,6 +343,28 @@ class DiaryViewModel(
         }
     }
 
+    /** Szacuje wartości odżywcze posiłku na podstawie opisu słownego za pomocą modelu AI Gemini. */
+    suspend fun recognizeMealFromText(description: String): Result<com.example.mojadieta.domain.model.RecognizedMeal> {
+        val apiKey = settingsRepository.current.geminiApiKey
+        if (apiKey.isBlank()) {
+            return Result.failure(IllegalStateException("Brak skonfigurowanego klucza Gemini API."))
+        }
+        return runCatching {
+            mealVisionRecognizer.recognizeMealFromText(description, apiKey)
+        }
+    }
+
+    /** Odczytuje tabelę wartości odżywczych z etykiety produktu ze zdjęcia. */
+    suspend fun recognizeNutritionLabel(imageFile: java.io.File): Result<com.example.mojadieta.data.vision.NutritionLabelResult> {
+        val apiKey = settingsRepository.current.geminiApiKey
+        if (apiKey.isBlank()) {
+            return Result.failure(IllegalStateException("Brak skonfigurowanego klucza Gemini API."))
+        }
+        return runCatching {
+            mealVisionRecognizer.recognizeNutritionLabel(imageFile, apiKey)
+        }
+    }
+
     /** Zapisuje klucz Gemini API w ustawieniach. */
     fun updateGeminiApiKey(key: String) {
         settingsRepository.update { it.copy(geminiApiKey = key.trim()) }

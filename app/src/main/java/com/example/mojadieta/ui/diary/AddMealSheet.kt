@@ -67,7 +67,10 @@ import com.example.mojadieta.ui.components.MealTypeChips
 import com.example.mojadieta.ui.components.PhotoAspect
 import com.example.mojadieta.ui.components.PhotoField
 import com.example.mojadieta.ui.components.RecipePickerList
+import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material3.SheetValue
 import com.example.mojadieta.ui.util.formatServings
 import com.example.mojadieta.ui.util.parseDecimal
@@ -83,6 +86,7 @@ fun AddMealSheet(
     imageStorage: ImageStorage,
     hasApiKey: Boolean = false,
     onRecognizeMeal: (suspend (String) -> Result<RecognizedMeal>)? = null,
+    onRecognizeMealText: (suspend (String) -> Result<RecognizedMeal>)? = null,
     onDismiss: () -> Unit,
     onRecipeSelected: (recipe: Recipe, mealType: MealType, servings: Double, imagePath: String?) -> Unit,
     onOpenProductPicker: (mealType: MealType, scan: Boolean) -> Unit,
@@ -169,6 +173,7 @@ fun AddMealSheet(
                         imageStorage = imageStorage,
                         hasApiKey = hasApiKey,
                         onRecognizeMeal = onRecognizeMeal,
+                        onRecognizeMealText = onRecognizeMealText,
                         onSubmit = { name, kcal, p, c, f, img, servings ->
                             onManualAdd(name, mealType, kcal, p, c, f, img, servings)
                         }
@@ -288,6 +293,7 @@ private fun ManualMealForm(
     imageStorage: ImageStorage,
     hasApiKey: Boolean = false,
     onRecognizeMeal: (suspend (String) -> Result<RecognizedMeal>)? = null,
+    onRecognizeMealText: (suspend (String) -> Result<RecognizedMeal>)? = null,
     onSubmit: (String, Int, Double, Double, Double, String?, Double) -> Unit
 ) {
     var name by rememberSaveable { mutableStateOf("") }
@@ -301,6 +307,9 @@ private fun ManualMealForm(
     var portionMode by rememberSaveable { mutableStateOf("servings") } // "servings" albo "grams"
     var servingsText by rememberSaveable { mutableStateOf("1") }
     var gramsText by rememberSaveable { mutableStateOf("100") }
+
+    var aiDescription by rememberSaveable { mutableStateOf("") }
+    var showAiDescriptionField by rememberSaveable { mutableStateOf(false) }
 
     var isAnalyzing by remember { mutableStateOf(false) }
     var aiErrorMessage by remember { mutableStateOf<String?>(null) }
@@ -331,6 +340,31 @@ private fun ManualMealForm(
         }
     }
 
+    fun runAiTextRecognition(text: String) {
+        if (onRecognizeMealText == null || text.isBlank()) return
+        scope.launch {
+            isAnalyzing = true
+            aiErrorMessage = null
+            val result = onRecognizeMealText(text)
+            isAnalyzing = false
+            result.fold(
+                onSuccess = { meal ->
+                    name = meal.name
+                    calories = meal.calories.toString()
+                    protein = formatGrams(meal.protein)
+                    carbs = formatGrams(meal.carbs)
+                    fat = formatGrams(meal.fat)
+                    portionMode = "servings"
+                    servingsText = "1"
+                    showAiDescriptionField = false
+                },
+                onFailure = { error ->
+                    aiErrorMessage = error.message ?: "Błąd podczas rozpoznawania opisu posiłku."
+                }
+            )
+        }
+    }
+
     val nameError = name.isBlank()
     val caloriesValue = if (calories.isBlank()) 0 else calories.trim().toIntOrNull()
     val proteinValue = if (protein.isBlank()) 0.0 else parseDecimal(protein)
@@ -356,6 +390,68 @@ private fun ManualMealForm(
             .padding(bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
+        if (hasApiKey && onRecognizeMealText != null) {
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
+                ),
+                shape = MaterialTheme.shapes.medium
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showAiDescriptionField = !showAiDescriptionField },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Outlined.AutoAwesome,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "Opisz posiłek słowami lub podyktuj (AI)",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Icon(
+                            if (showAiDescriptionField) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                            contentDescription = null
+                        )
+                    }
+                    if (showAiDescriptionField) {
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = aiDescription,
+                            onValueChange = { aiDescription = it },
+                            placeholder = { Text("np. 2 jajka sadzone, 2 kromki chleba razowego z masłem i duży pomidor") },
+                            modifier = Modifier.fillMaxWidth(),
+                            maxLines = 3
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        FilledTonalButton(
+                            onClick = { runAiTextRecognition(aiDescription) },
+                            enabled = !isAnalyzing && aiDescription.isNotBlank(),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            if (isAnalyzing) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                Spacer(Modifier.width(8.dp))
+                                Text("Analizuję opis…")
+                            } else {
+                                Icon(Icons.Outlined.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Przelicz przez AI i uzupełnij")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         OutlinedTextField(
             value = name,
             onValueChange = { name = it },

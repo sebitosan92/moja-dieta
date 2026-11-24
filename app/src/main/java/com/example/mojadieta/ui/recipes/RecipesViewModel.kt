@@ -24,12 +24,18 @@ data class RecipesUiState(
     val allTags: List<String> = emptyList()
 )
 
-class RecipesViewModel(private val recipeRepository: RecipeRepository) : ViewModel() {
+class RecipesViewModel(
+    private val recipeRepository: RecipeRepository,
+    private val settingsRepository: com.example.mojadieta.data.settings.SettingsRepository? = null,
+    private val mealVisionRecognizer: com.example.mojadieta.data.vision.MealVisionRecognizer = com.example.mojadieta.data.vision.MealVisionRecognizer()
+) : ViewModel() {
 
     private val query = MutableStateFlow("")
     private val category = MutableStateFlow<RecipeCategory?>(null)
     private val favoritesOnly = MutableStateFlow(false)
     private val tag = MutableStateFlow<String?>(null)
+
+    val hasApiKey: Boolean get() = settingsRepository?.current?.geminiApiKey?.isNotBlank() == true
 
     val uiState: StateFlow<RecipesUiState> = combine(
         recipeRepository.observeRecipes(),
@@ -79,5 +85,34 @@ class RecipesViewModel(private val recipeRepository: RecipeRepository) : ViewMod
 
     fun toggleFavorite(recipe: Recipe) {
         viewModelScope.launch { recipeRepository.setFavorite(recipe.id, !recipe.favorite) }
+    }
+
+    suspend fun generateFridgeRecipes(
+        ingredients: String,
+        imageFile: java.io.File? = null
+    ): Result<List<com.example.mojadieta.data.vision.FridgeRecipeSuggestion>> {
+        val apiKey = settingsRepository?.current?.geminiApiKey.orEmpty()
+        if (apiKey.isBlank()) {
+            return Result.failure(IllegalStateException("Brak skonfigurowanego klucza Gemini API."))
+        }
+        return runCatching {
+            mealVisionRecognizer.generateFridgeRecipes(ingredients, imageFile, null, apiKey)
+        }
+    }
+
+    suspend fun saveFridgeRecipeAsRecipe(suggestion: com.example.mojadieta.data.vision.FridgeRecipeSuggestion): Long {
+        val recipe = Recipe(
+            name = suggestion.title,
+            category = RecipeCategory.LUNCH,
+            calories = suggestion.calories,
+            protein = suggestion.protein,
+            carbs = suggestion.carbs,
+            fat = suggestion.fat,
+            servings = 1,
+            ingredients = suggestion.ingredients.joinToString("\n") { "- $it" },
+            instructions = suggestion.instructions.joinToString("\n"),
+            tags = listOf("Lodówka AI")
+        )
+        return recipeRepository.saveRecipe(recipe)
     }
 }

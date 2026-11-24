@@ -51,7 +51,10 @@ data class AppSettings(
     val fastingEnabled: Boolean = false,
     val fastingHours: Int = 16,
     val eatingStartHour: Int = 12,
-    val eatingStartMinute: Int = 0
+    val eatingStartMinute: Int = 0,
+
+    /** Klucz Google Gemini API do automatycznego rozpoznawania posiłków ze zdjęć. */
+    val geminiApiKey: String = ""
 ) {
     val eatingWindowHours: Int get() = 24 - fastingHours
 

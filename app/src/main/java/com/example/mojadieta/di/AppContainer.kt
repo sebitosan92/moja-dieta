@@ -71,6 +71,7 @@ class AppContainer(private val context: Context) {
     val productLookup = ProductLookup(productRepository, OpenFoodFactsClient())
     val healthConnect = HealthConnectManager(context)
     val textExtractor by lazy { TextExtractor(context, imageStorage) }
+    val mealVisionRecognizer = com.example.mojadieta.data.vision.MealVisionRecognizer()
 
     val calculateNutritionSummary = CalculateNutritionSummaryUseCase()
     val calculateRecipeNutrition = CalculateRecipeNutritionUseCase()

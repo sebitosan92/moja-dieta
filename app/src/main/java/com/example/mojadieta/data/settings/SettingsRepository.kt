@@ -72,7 +72,8 @@ class SettingsRepository(context: Context) {
             fastingEnabled = prefs.getBoolean("fast_on", d.fastingEnabled),
             fastingHours = prefs.getInt("fast_hours", d.fastingHours),
             eatingStartHour = prefs.getInt("eat_h", d.eatingStartHour),
-            eatingStartMinute = prefs.getInt("eat_m", d.eatingStartMinute)
+            eatingStartMinute = prefs.getInt("eat_m", d.eatingStartMinute),
+            geminiApiKey = prefs.getString("gemini_api_key", d.geminiApiKey).orEmpty()
         )
     }
 
@@ -103,6 +104,7 @@ class SettingsRepository(context: Context) {
         putInt("fast_hours", s.fastingHours)
         putInt("eat_h", s.eatingStartHour)
         putInt("eat_m", s.eatingStartMinute)
+        putString("gemini_api_key", s.geminiApiKey)
     }
 
     private inline fun <reified T : Enum<T>> enumOr(name: String?, default: T): T =

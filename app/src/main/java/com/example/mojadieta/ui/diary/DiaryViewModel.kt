@@ -98,7 +98,8 @@ class DiaryViewModel(
     val imageStorage: ImageStorage,
     private val settingsRepository: SettingsRepository,
     private val productUsageRepository: ProductUsageRepository,
-    activityRepository: ActivityRepository
+    activityRepository: ActivityRepository,
+    private val mealVisionRecognizer: com.example.mojadieta.data.vision.MealVisionRecognizer = com.example.mojadieta.data.vision.MealVisionRecognizer()
 ) : ViewModel() {
 
     private val selectedDate = MutableStateFlow(LocalDate.now())
@@ -327,5 +328,21 @@ class DiaryViewModel(
     fun setWaterGoal(goalMl: Int) {
         if (goalMl <= 0) return
         viewModelScope.launch { waterRepository.setGoal(selectedDate.value, goalMl) }
+    }
+
+    /** Rozpoznaje posiłek ze zdjęcia za pomocą modelu AI Gemini. */
+    suspend fun recognizeMealFromPhoto(imagePath: String): Result<com.example.mojadieta.domain.model.RecognizedMeal> {
+        val apiKey = settingsRepository.current.geminiApiKey
+        if (apiKey.isBlank()) {
+            return Result.failure(IllegalStateException("Brak skonfigurowanego klucza Gemini API."))
+        }
+        return runCatching {
+            mealVisionRecognizer.recognizeMeal(java.io.File(imagePath), apiKey)
+        }
+    }
+
+    /** Zapisuje klucz Gemini API w ustawieniach. */
+    fun updateGeminiApiKey(key: String) {
+        settingsRepository.update { it.copy(geminiApiKey = key.trim()) }
     }
 }

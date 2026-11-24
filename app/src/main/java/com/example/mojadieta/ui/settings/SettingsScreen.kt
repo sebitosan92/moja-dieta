@@ -27,6 +27,12 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.VisibilityOff
+import androidx.compose.material.icons.outlined.OpenInNew
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.material.icons.outlined.Backup
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.Notifications
@@ -356,6 +362,59 @@ fun SettingsScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                    }
+                }
+            }
+            item(key = "ai") {
+                Section("Inteligentny asystent (AI)", Icons.Outlined.AutoAwesome) {
+                    Text(
+                        "Automatyczne rozpoznawanie posiłków ze zdjęć i szacowanie wartości odżywczych (kalorie, makroskładniki) przy użyciu modelu Google Gemini.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    var keyInput by rememberSaveable(s.geminiApiKey) { mutableStateOf(s.geminiApiKey) }
+                    var keyVisible by rememberSaveable { mutableStateOf(false) }
+
+                    OutlinedTextField(
+                        value = keyInput,
+                        onValueChange = {
+                            keyInput = it
+                            viewModel.update { current -> current.copy(geminiApiKey = it.trim()) }
+                        },
+                        label = { Text("Klucz Google Gemini API") },
+                        placeholder = { Text("AIzaSy...") },
+                        singleLine = true,
+                        visualTransformation = if (keyVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                        trailingIcon = {
+                            IconButton(onClick = { keyVisible = !keyVisible }) {
+                                Icon(
+                                    if (keyVisible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                                    contentDescription = if (keyVisible) "Ukryj klucz" else "Pokaż klucz"
+                                )
+                            }
+                        },
+                        supportingText = {
+                            if (s.geminiApiKey.isNotBlank()) {
+                                Text("✓ Klucz zapisany – rozpoznawanie posiłków jest aktywne", color = MaterialTheme.colorScheme.primary)
+                            } else {
+                                Text("Opcjonalne – bez klucza wpisy dodawane są jak dotychczas", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    OutlinedButton(
+                        onClick = {
+                            runCatching {
+                                context.startActivity(
+                                    Intent(Intent.ACTION_VIEW, Uri.parse("https://aistudio.google.com/app/apikey"))
+                                )
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Outlined.OpenInNew, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Pobierz darmowy klucz (Google AI Studio)")
                     }
                 }
             }

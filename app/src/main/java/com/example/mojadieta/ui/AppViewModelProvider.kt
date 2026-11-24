@@ -39,7 +39,8 @@ object AppViewModelProvider {
                 imageStorage = c.imageStorage,
                 settingsRepository = c.settingsRepository,
                 productUsageRepository = c.productUsageRepository,
-                activityRepository = c.activityRepository
+                activityRepository = c.activityRepository,
+                mealVisionRecognizer = c.mealVisionRecognizer
             )
         }
         initializer {

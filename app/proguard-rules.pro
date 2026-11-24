@@ -3,6 +3,7 @@
 # Encje Room i modele domenowe
 -keep class com.example.mojadieta.data.local.entity.** { *; }
 -keep class com.example.mojadieta.domain.model.** { *; }
+-keep class com.example.mojadieta.data.vision.** { *; }
 
 # WorkManager, aktualizacje i widżety
 -keep class com.example.mojadieta.update.** { *; }

@@ -237,6 +237,8 @@ fun DiaryScreen(
             initialMealType = mealType,
             recipes = state.recipes,
             imageStorage = viewModel.imageStorage,
+            hasApiKey = state.settings.geminiApiKey.isNotBlank(),
+            onRecognizeMeal = viewModel::recognizeMealFromPhoto,
             onDismiss = { addMealFor = null },
             onRecipeSelected = { recipe, type, servings, imagePath ->
                 viewModel.addRecipeMeal(recipe, type, servings, imagePath)

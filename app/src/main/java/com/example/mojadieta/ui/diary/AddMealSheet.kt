@@ -26,6 +26,18 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.OpenInNew
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalContext
+import com.example.mojadieta.domain.model.RecognizedMeal
+import kotlinx.coroutines.launch
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -35,6 +47,8 @@ import androidx.compose.material3.SecondaryTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -64,6 +78,8 @@ fun AddMealSheet(
     initialMealType: MealType,
     recipes: List<Recipe>,
     imageStorage: ImageStorage,
+    hasApiKey: Boolean = false,
+    onRecognizeMeal: (suspend (String) -> Result<RecognizedMeal>)? = null,
     onDismiss: () -> Unit,
     onRecipeSelected: (recipe: Recipe, mealType: MealType, servings: Double, imagePath: String?) -> Unit,
     onOpenProductPicker: (mealType: MealType, scan: Boolean) -> Unit,
@@ -134,6 +150,8 @@ fun AddMealSheet(
 
                     else -> ManualMealForm(
                         imageStorage = imageStorage,
+                        hasApiKey = hasApiKey,
+                        onRecognizeMeal = onRecognizeMeal,
                         onSubmit = { name, kcal, p, c, f, img -> onManualAdd(name, mealType, kcal, p, c, f, img) }
                     )
                 }
@@ -248,6 +266,8 @@ private fun PortionStep(
 @Composable
 private fun ManualMealForm(
     imageStorage: ImageStorage,
+    hasApiKey: Boolean = false,
+    onRecognizeMeal: (suspend (String) -> Result<RecognizedMeal>)? = null,
     onSubmit: (String, Int, Double, Double, Double, String?) -> Unit
 ) {
     var name by rememberSaveable { mutableStateOf("") }
@@ -257,6 +277,33 @@ private fun ManualMealForm(
     var fat by rememberSaveable { mutableStateOf("") }
     var imagePath by rememberSaveable { mutableStateOf<String?>(null) }
     var showErrors by rememberSaveable { mutableStateOf(false) }
+
+    var isAnalyzing by remember { mutableStateOf(false) }
+    var aiErrorMessage by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+
+    fun runAiRecognition(path: String) {
+        if (onRecognizeMeal == null) return
+        scope.launch {
+            isAnalyzing = true
+            aiErrorMessage = null
+            val result = onRecognizeMeal(path)
+            isAnalyzing = false
+            result.fold(
+                onSuccess = { meal ->
+                    name = meal.name
+                    calories = meal.calories.toString()
+                    protein = formatGrams(meal.protein)
+                    carbs = formatGrams(meal.carbs)
+                    fat = formatGrams(meal.fat)
+                },
+                onFailure = { error ->
+                    aiErrorMessage = error.message ?: "Błąd podczas rozpoznawania posiłku."
+                }
+            )
+        }
+    }
 
     val nameError = name.isBlank()
     val caloriesValue = if (calories.isBlank()) 0 else calories.trim().toIntOrNull()
@@ -306,9 +353,56 @@ private fun ManualMealForm(
                 val previous = imagePath
                 if (previous != null && previous != newPath) imageStorage.delete(previous)
                 imagePath = newPath
+                if (newPath != null && hasApiKey && onRecognizeMeal != null && name.isBlank()) {
+                    runAiRecognition(newPath)
+                }
             },
             imageWidthFraction = 0.6f
         )
+
+        if (imagePath != null) {
+            if (hasApiKey && onRecognizeMeal != null) {
+                FilledTonalButton(
+                    onClick = { imagePath?.let { runAiRecognition(it) } },
+                    enabled = !isAnalyzing,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    if (isAnalyzing) {
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Rozpoznaję posiłek przez AI…")
+                    } else {
+                        Icon(Icons.Outlined.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Rozpoznaj ze zdjęcia (AI Gemini)")
+                    }
+                }
+            } else {
+                OutlinedButton(
+                    onClick = {
+                        runCatching {
+                            context.startActivity(
+                                Intent(Intent.ACTION_VIEW, Uri.parse("https://aistudio.google.com/app/apikey"))
+                            )
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Outlined.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Włącz rozpoznawanie posiłków AI (darmowy klucz)")
+                }
+            }
+        }
+
+        if (aiErrorMessage != null) {
+            Text(
+                aiErrorMessage.orEmpty(),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error
+            )
+        }
+
         Spacer(Modifier.height(8.dp))
         Button(
             onClick = {

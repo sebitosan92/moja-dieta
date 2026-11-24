@@ -249,8 +249,8 @@ fun DiaryScreen(
                 productPickerScan = scan
                 productPickerFor = type
             },
-            onManualAdd = { name, type, kcal, protein, carbs, fat, imagePath ->
-                viewModel.addManualMeal(name, type, kcal, protein, carbs, fat, imagePath)
+            onManualAdd = { name, type, kcal, protein, carbs, fat, imagePath, servings ->
+                viewModel.addManualMeal(name, type, kcal, protein, carbs, fat, imagePath, servings)
                 addMealFor = null
             }
         )

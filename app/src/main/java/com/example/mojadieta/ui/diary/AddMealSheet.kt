@@ -67,6 +67,9 @@ import com.example.mojadieta.ui.components.MealTypeChips
 import com.example.mojadieta.ui.components.PhotoAspect
 import com.example.mojadieta.ui.components.PhotoField
 import com.example.mojadieta.ui.components.RecipePickerList
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material3.SheetValue
+import com.example.mojadieta.ui.util.formatServings
 import com.example.mojadieta.ui.util.parseDecimal
 
 /**
@@ -83,9 +86,14 @@ fun AddMealSheet(
     onDismiss: () -> Unit,
     onRecipeSelected: (recipe: Recipe, mealType: MealType, servings: Double, imagePath: String?) -> Unit,
     onOpenProductPicker: (mealType: MealType, scan: Boolean) -> Unit,
-    onManualAdd: (name: String, mealType: MealType, calories: Int, protein: Double, carbs: Double, fat: Double, imagePath: String?) -> Unit
+    onManualAdd: (name: String, mealType: MealType, calories: Int, protein: Double, carbs: Double, fat: Double, imagePath: String?, servings: Double) -> Unit
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val sheetState = rememberModalBottomSheetState(
+        skipPartiallyExpanded = true,
+        confirmValueChange = { sheetValue ->
+            sheetValue != SheetValue.Hidden
+        }
+    )
     var mealType by rememberSaveable { mutableStateOf(initialMealType) }
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var selectedRecipeId by rememberSaveable { mutableStateOf<Long?>(null) }
@@ -106,7 +114,16 @@ fun AddMealSheet(
                     onConfirm = { servings, imagePath -> onRecipeSelected(selectedRecipe, mealType, servings, imagePath) }
                 )
             } else {
-                Text("Dodaj posiłek", style = MaterialTheme.typography.titleLarge)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Dodaj posiłek", style = MaterialTheme.typography.titleLarge)
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Outlined.Close, contentDescription = "Zamknij")
+                    }
+                }
                 Spacer(Modifier.height(12.dp))
                 Text("Pora posiłku", style = MaterialTheme.typography.labelLarge)
                 Spacer(Modifier.height(6.dp))
@@ -152,7 +169,9 @@ fun AddMealSheet(
                         imageStorage = imageStorage,
                         hasApiKey = hasApiKey,
                         onRecognizeMeal = onRecognizeMeal,
-                        onSubmit = { name, kcal, p, c, f, img -> onManualAdd(name, mealType, kcal, p, c, f, img) }
+                        onSubmit = { name, kcal, p, c, f, img, servings ->
+                            onManualAdd(name, mealType, kcal, p, c, f, img, servings)
+                        }
                     )
                 }
             }
@@ -263,12 +282,13 @@ private fun PortionStep(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ManualMealForm(
     imageStorage: ImageStorage,
     hasApiKey: Boolean = false,
     onRecognizeMeal: (suspend (String) -> Result<RecognizedMeal>)? = null,
-    onSubmit: (String, Int, Double, Double, Double, String?) -> Unit
+    onSubmit: (String, Int, Double, Double, Double, String?, Double) -> Unit
 ) {
     var name by rememberSaveable { mutableStateOf("") }
     var calories by rememberSaveable { mutableStateOf("") }
@@ -277,6 +297,10 @@ private fun ManualMealForm(
     var fat by rememberSaveable { mutableStateOf("") }
     var imagePath by rememberSaveable { mutableStateOf<String?>(null) }
     var showErrors by rememberSaveable { mutableStateOf(false) }
+
+    var portionMode by rememberSaveable { mutableStateOf("servings") } // "servings" albo "grams"
+    var servingsText by rememberSaveable { mutableStateOf("1") }
+    var gramsText by rememberSaveable { mutableStateOf("100") }
 
     var isAnalyzing by remember { mutableStateOf(false) }
     var aiErrorMessage by remember { mutableStateOf<String?>(null) }
@@ -297,6 +321,8 @@ private fun ManualMealForm(
                     protein = formatGrams(meal.protein)
                     carbs = formatGrams(meal.carbs)
                     fat = formatGrams(meal.fat)
+                    portionMode = "servings"
+                    servingsText = "1"
                 },
                 onFailure = { error ->
                     aiErrorMessage = error.message ?: "Błąd podczas rozpoznawania posiłku."
@@ -310,6 +336,19 @@ private fun ManualMealForm(
     val proteinValue = if (protein.isBlank()) 0.0 else parseDecimal(protein)
     val carbsValue = if (carbs.isBlank()) 0.0 else parseDecimal(carbs)
     val fatValue = if (fat.isBlank()) 0.0 else parseDecimal(fat)
+
+    val servingsValue = parseDecimal(servingsText)?.takeIf { it > 0 && it <= 50 }
+    val gramsValue = parseDecimal(gramsText)?.takeIf { it > 0 && it <= 5000 }
+    val portionValid = if (portionMode == "servings") servingsValue != null else gramsValue != null
+
+    val servingsMultiplier = if (portionMode == "servings") (servingsValue ?: 1.0) else 1.0
+    val gramsMultiplier = if (portionMode == "grams") ((gramsValue ?: 100.0) / 100.0) else 1.0
+    val effectiveMultiplier = if (portionMode == "servings") servingsMultiplier else gramsMultiplier
+
+    val calculatedCalories = Math.round((caloriesValue ?: 0) * effectiveMultiplier).toInt()
+    val calculatedProtein = Math.round((proteinValue ?: 0.0) * effectiveMultiplier * 10.0) / 10.0
+    val calculatedCarbs = Math.round((carbsValue ?: 0.0) * effectiveMultiplier * 10.0) / 10.0
+    val calculatedFat = Math.round((fatValue ?: 0.0) * effectiveMultiplier * 10.0) / 10.0
 
     Column(
         modifier = Modifier
@@ -331,18 +370,139 @@ private fun ManualMealForm(
             modifier = Modifier.fillMaxWidth()
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            NumberField("Kalorie (kcal)", calories, { calories = it }, showErrors && caloriesValue == null, Modifier.weight(1f), decimal = false)
-            NumberField("Białko (g)", protein, { protein = it }, showErrors && proteinValue == null, Modifier.weight(1f))
+            NumberField(
+                label = if (portionMode == "grams") "kcal / 100 g" else "Kalorie (kcal)",
+                value = calories,
+                onValueChange = { calories = it },
+                isError = showErrors && caloriesValue == null,
+                modifier = Modifier.weight(1f),
+                decimal = false
+            )
+            NumberField(
+                label = if (portionMode == "grams") "B / 100 g" else "Białko (g)",
+                value = protein,
+                onValueChange = { protein = it },
+                isError = showErrors && proteinValue == null,
+                modifier = Modifier.weight(1f)
+            )
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            NumberField("Węglowodany (g)", carbs, { carbs = it }, showErrors && carbsValue == null, Modifier.weight(1f))
-            NumberField("Tłuszcze (g)", fat, { fat = it }, showErrors && fatValue == null, Modifier.weight(1f))
+            NumberField(
+                label = if (portionMode == "grams") "W / 100 g" else "Węglowodany (g)",
+                value = carbs,
+                onValueChange = { carbs = it },
+                isError = showErrors && carbsValue == null,
+                modifier = Modifier.weight(1f)
+            )
+            NumberField(
+                label = if (portionMode == "grams") "T / 100 g" else "Tłuszcze (g)",
+                value = fat,
+                onValueChange = { fat = it },
+                isError = showErrors && fatValue == null,
+                modifier = Modifier.weight(1f)
+            )
         }
         Text(
-            "Wartości odżywcze są opcjonalne – puste pola liczone są jako 0.",
+            if (portionMode == "grams") "Wartości odżywcze podaj w przeliczeniu na 100 g posiłku lub produktu."
+            else "Wartości odżywcze są opcjonalne – puste pola liczone są jako 0.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+
+        Spacer(Modifier.height(4.dp))
+        Text("Wielkość posiłku / porcja", style = MaterialTheme.typography.labelLarge)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(
+                selected = portionMode == "servings",
+                onClick = { portionMode = "servings" },
+                label = { Text("Liczba porcji") }
+            )
+            FilterChip(
+                selected = portionMode == "grams",
+                onClick = { portionMode = "grams" },
+                label = { Text("Waga w gramach (g)") }
+            )
+        }
+
+        if (portionMode == "servings") {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(0.5, 1.0, 1.5, 2.0, 3.0).forEach { value ->
+                    FilterChip(
+                        selected = parseDecimal(servingsText) == value,
+                        onClick = { servingsText = formatGrams(value) },
+                        label = { Text(if (value == 0.5) "½" else if (value == 1.5) "1½" else formatGrams(value)) }
+                    )
+                }
+            }
+            OutlinedTextField(
+                value = servingsText,
+                onValueChange = { input -> servingsText = input.filter { it.isDigit() || it == ',' || it == '.' }.take(5) },
+                label = { Text("Liczba porcji") },
+                singleLine = true,
+                isError = (showErrors || servingsText.isNotEmpty()) && servingsValue == null,
+                supportingText = if ((showErrors || servingsText.isNotEmpty()) && servingsValue == null) {
+                    { Text("Podaj poprawną liczbę porcji (0.1 - 50)") }
+                } else null,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Next),
+                modifier = Modifier.fillMaxWidth()
+            )
+        } else {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(50.0, 100.0, 150.0, 200.0, 250.0, 300.0).forEach { value ->
+                    FilterChip(
+                        selected = parseDecimal(gramsText) == value,
+                        onClick = { gramsText = formatGrams(value) },
+                        label = { Text("${formatGrams(value)} g") }
+                    )
+                }
+            }
+            OutlinedTextField(
+                value = gramsText,
+                onValueChange = { input -> gramsText = input.filter { it.isDigit() || it == ',' || it == '.' }.take(6) },
+                label = { Text("Waga zjedzonej porcji (g)") },
+                singleLine = true,
+                isError = (showErrors || gramsText.isNotEmpty()) && gramsValue == null,
+                supportingText = if ((showErrors || gramsText.isNotEmpty()) && gramsValue == null) {
+                    { Text("Podaj poprawną wagę w gramach (1 - 5000 g)") }
+                } else null,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Next),
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+
+        val showSummaryCard = (portionMode == "servings" && servingsMultiplier != 1.0) ||
+                (portionMode == "grams" && gramsMultiplier != 1.0)
+
+        if (showSummaryCard && (caloriesValue ?: 0) > 0) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                shape = MaterialTheme.shapes.medium
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            "$calculatedCalories kcal",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            if (portionMode == "servings") "Po przeliczeniu (${formatServings(servingsMultiplier)})"
+                            else "Po przeliczeniu (${formatGrams(parseDecimal(gramsText) ?: 100.0)} g)",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Spacer(Modifier.width(14.dp))
+                    MacroInlineRow(calculatedProtein, calculatedCarbs, calculatedFat)
+                }
+            }
+        }
+
         Spacer(Modifier.height(4.dp))
         Text("Zdjęcie posiłku (opcjonalne)", style = MaterialTheme.typography.labelLarge)
         PhotoField(
@@ -407,8 +567,15 @@ private fun ManualMealForm(
         Button(
             onClick = {
                 showErrors = true
-                if (!nameError && caloriesValue != null && proteinValue != null && carbsValue != null && fatValue != null) {
-                    onSubmit(name, caloriesValue, proteinValue, carbsValue, fatValue, imagePath)
+                if (!nameError && caloriesValue != null && proteinValue != null && carbsValue != null && fatValue != null && portionValid) {
+                    val finalName = if (portionMode == "grams") {
+                        val g = gramsValue ?: 100.0
+                        "$name (${formatGrams(g)} g)"
+                    } else {
+                        name
+                    }
+                    val finalServings = if (portionMode == "servings") (servingsValue ?: 1.0) else 1.0
+                    onSubmit(finalName, calculatedCalories, calculatedProtein, calculatedCarbs, calculatedFat, imagePath, finalServings)
                 }
             },
             modifier = Modifier

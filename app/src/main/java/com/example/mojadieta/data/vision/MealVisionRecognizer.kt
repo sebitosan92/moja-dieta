@@ -11,6 +11,7 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
 import java.net.HttpURLConnection
+import java.net.SocketTimeoutException
 import java.net.URL
 import java.util.Base64
 import kotlin.math.max
@@ -49,6 +50,9 @@ class MealVisionRecognizer {
                 } catch (e: ModelNotFoundException) {
                     lastException = e
                     continue
+                } catch (e: SocketTimeoutException) {
+                    lastException = e
+                    continue
                 } catch (e: IOException) {
                     lastException = e
                     if (e.message?.contains("przeciążone", ignoreCase = true) == true) {
@@ -61,6 +65,9 @@ class MealVisionRecognizer {
             }
             if (attempt == 1) kotlinx.coroutines.delay(1000)
         }
+        if (lastException is SocketTimeoutException) {
+            throw IOException("Upłynął limit czasu odpowiedzi AI. Serwery Gemini odpowiadają zbyt wolno – spróbuj ponownie za moment.")
+        }
         throw lastException ?: IOException("Nie udało się połączyć z usługą Gemini.")
     }
 
@@ -68,7 +75,7 @@ class MealVisionRecognizer {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(imageFile.absolutePath, bounds)
 
-        val maxDimension = 1024
+        val maxDimension = 768
         var sampleSize = 1
         while (max(bounds.outWidth, bounds.outHeight) / (sampleSize * 2) >= maxDimension) {
             sampleSize *= 2
@@ -92,7 +99,7 @@ class MealVisionRecognizer {
         }
 
         val outputStream = ByteArrayOutputStream()
-        scaled.compress(Bitmap.CompressFormat.JPEG, 80, outputStream)
+        scaled.compress(Bitmap.CompressFormat.JPEG, 75, outputStream)
         val bytes = outputStream.toByteArray()
         return Base64.getEncoder().encodeToString(bytes)
     }
@@ -101,8 +108,8 @@ class MealVisionRecognizer {
         val endpoint = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey"
         val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
-            connectTimeout = 20_000
-            readTimeout = 25_000
+            connectTimeout = 30_000
+            readTimeout = 45_000
             doOutput = true
             setRequestProperty("Content-Type", "application/json; charset=UTF-8")
             setRequestProperty("Accept", "application/json")

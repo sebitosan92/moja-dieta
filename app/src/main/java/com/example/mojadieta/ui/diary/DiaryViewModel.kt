@@ -232,7 +232,8 @@ class DiaryViewModel(
         protein: Double,
         carbs: Double,
         fat: Double,
-        imagePath: String? = null
+        imagePath: String? = null,
+        servings: Double = 1.0
     ) {
         viewModelScope.launch {
             diaryRepository.addMeal(
@@ -245,6 +246,7 @@ class DiaryViewModel(
                     carbs = carbs,
                     fat = fat,
                     isEaten = newEaten,
+                    servings = servings,
                     imagePath = imagePath
                 )
             )

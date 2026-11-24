@@ -59,13 +59,17 @@ class GitHubUpdateRepository(
         }
         if (apkUrl.isNullOrBlank()) return null
         val tag = json.optString("tag_name")
+        val notes = json.optString("body").trim()
+        val sha256Regex = Regex("(?i)(?:sha256[:\\s=]+)?([a-f0-9]{64})")
+        val sha256 = sha256Regex.find(notes)?.groupValues?.get(1)
         return AppRelease(
             versionName = tag.removePrefix("v").removePrefix("V"),
             title = json.optString("name").ifBlank { tag },
-            notes = json.optString("body").trim(),
+            notes = notes,
             apkUrl = apkUrl,
             apkSizeBytes = apkSize,
-            pageUrl = json.optString("html_url")
+            pageUrl = json.optString("html_url"),
+            sha256 = sha256
         )
     }
 
@@ -83,6 +87,7 @@ class GitHubUpdateRepository(
                 readTimeout = 30_000
                 setRequestProperty("User-Agent", "MojaDieta-Android")
             }
+            val digest = java.security.MessageDigest.getInstance("SHA-256")
             try {
                 if (connection.responseCode != HttpURLConnection.HTTP_OK) {
                     throw IOException("Nie udało się pobrać pliku (kod ${connection.responseCode})")
@@ -97,10 +102,16 @@ class GitHubUpdateRepository(
                             val read = input.read(buffer)
                             if (read < 0) break
                             output.write(buffer, 0, read)
+                            digest.update(buffer, 0, read)
                             downloaded += read
                             if (total > 0) onProgress((downloaded.toFloat() / total).coerceIn(0f, 1f))
                         }
                     }
+                }
+                val downloadedHash = digest.digest().joinToString("") { "%02x".format(it) }
+                if (release.sha256 != null && !downloadedHash.equals(release.sha256, ignoreCase = true)) {
+                    partial.delete()
+                    throw SecurityException("Niezgodność sumy kontrolnej SHA-256 pobranej aktualizacji.")
                 }
                 if (!partial.renameTo(target)) throw IOException("Nie udało się zapisać pliku aktualizacji")
                 onProgress(1f)

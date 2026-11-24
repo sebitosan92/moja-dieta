@@ -141,8 +141,9 @@ class AddRecipeToDiaryUseCase(private val diaryRepository: DiaryRepository) {
         date: LocalDate,
         mealType: MealType,
         eaten: Boolean = false,
-        servings: Double = 1.0
-    ): Long = diaryRepository.addMeal(recipe.toMealEntry(date, mealType, eaten).scaledTo(servings))
+        servings: Double = 1.0,
+        imagePath: String? = null
+    ): Long = diaryRepository.addMeal(recipe.toMealEntry(date, mealType, eaten, imagePath).scaledTo(servings))
 }
 
 /**
@@ -174,7 +175,7 @@ class CopyPlannedMealsToDiaryUseCase(
     }
 }
 
-private fun Recipe.toMealEntry(date: LocalDate, mealType: MealType, eaten: Boolean) = MealEntry(
+private fun Recipe.toMealEntry(date: LocalDate, mealType: MealType, eaten: Boolean, customImagePath: String? = null) = MealEntry(
     date = date,
     mealType = mealType,
     name = name,
@@ -184,7 +185,7 @@ private fun Recipe.toMealEntry(date: LocalDate, mealType: MealType, eaten: Boole
     fat = fat,
     recipeId = id,
     isEaten = eaten,
-    imagePath = null,
+    imagePath = customImagePath ?: imagePath,
     fiber = fiber,
     sugar = sugar,
     salt = salt

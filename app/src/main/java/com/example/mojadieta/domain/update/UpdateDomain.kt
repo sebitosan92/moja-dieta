@@ -9,7 +9,8 @@ data class AppRelease(
     val notes: String,
     val apkUrl: String,
     val apkSizeBytes: Long,
-    val pageUrl: String
+    val pageUrl: String,
+    val sha256: String? = null
 )
 
 interface UpdateRepository {

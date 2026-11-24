@@ -191,9 +191,9 @@ class DiaryViewModel(
         selectedDate.update { it.plusDays(days) }
     }
 
-    fun addRecipeMeal(recipe: Recipe, mealType: MealType, servings: Double = 1.0) {
+    fun addRecipeMeal(recipe: Recipe, mealType: MealType, servings: Double = 1.0, imagePath: String? = null) {
         viewModelScope.launch {
-            addRecipeToDiary(recipe, selectedDate.value, mealType, eaten = newEaten, servings = servings)
+            addRecipeToDiary(recipe, selectedDate.value, mealType, eaten = newEaten, servings = servings, imagePath = imagePath)
         }
     }
 
@@ -230,7 +230,8 @@ class DiaryViewModel(
         calories: Int,
         protein: Double,
         carbs: Double,
-        fat: Double
+        fat: Double,
+        imagePath: String? = null
     ) {
         viewModelScope.launch {
             diaryRepository.addMeal(
@@ -242,7 +243,8 @@ class DiaryViewModel(
                     protein = protein,
                     carbs = carbs,
                     fat = fat,
-                    isEaten = newEaten
+                    isEaten = newEaten,
+                    imagePath = imagePath
                 )
             )
         }

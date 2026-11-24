@@ -236,9 +236,10 @@ fun DiaryScreen(
         AddMealSheet(
             initialMealType = mealType,
             recipes = state.recipes,
+            imageStorage = viewModel.imageStorage,
             onDismiss = { addMealFor = null },
-            onRecipeSelected = { recipe, type, servings ->
-                viewModel.addRecipeMeal(recipe, type, servings)
+            onRecipeSelected = { recipe, type, servings, imagePath ->
+                viewModel.addRecipeMeal(recipe, type, servings, imagePath)
                 addMealFor = null
             },
             onOpenProductPicker = { type, scan ->
@@ -246,8 +247,8 @@ fun DiaryScreen(
                 productPickerScan = scan
                 productPickerFor = type
             },
-            onManualAdd = { name, type, kcal, protein, carbs, fat ->
-                viewModel.addManualMeal(name, type, kcal, protein, carbs, fat)
+            onManualAdd = { name, type, kcal, protein, carbs, fat, imagePath ->
+                viewModel.addManualMeal(name, type, kcal, protein, carbs, fat, imagePath)
                 addMealFor = null
             }
         )

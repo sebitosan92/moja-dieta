@@ -52,7 +52,7 @@ import com.example.mojadieta.data.local.entity.WeightEntryEntity
         ProductUsageEntity::class
     ],
     version = 4,
-    exportSchema = false
+    exportSchema = true
 )
 abstract class DietDatabase : RoomDatabase() {
 

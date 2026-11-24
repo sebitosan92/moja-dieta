@@ -51,7 +51,8 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -113,4 +114,8 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
 
     testImplementation(libs.junit)
+}
+
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
 }

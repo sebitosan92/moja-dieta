@@ -29,26 +29,44 @@ class BackupManager(private val context: Context) {
     data class Summary(val images: Int, val sizeKb: Long)
 
     suspend fun createBackup(target: Uri): Summary = withContext(Dispatchers.IO) {
-        // Zapisujemy wszystko z dziennika WAL do głównego pliku bazy.
-        DietDatabase.getInstance(context).openHelper.writableDatabase.query("PRAGMA wal_checkpoint(TRUNCATE)").use { it.moveToFirst() }
+        // Tworzymy spójną migawkę bazy danych (VACUUM INTO dla SQLite 3.27+ / Android 11+, lub checkpoint WAL)
+        val tempDb = File(context.cacheDir, "backup_snapshot.db").apply { if (exists()) delete() }
+        val vacuumSuccess = runCatching {
+            val db = DietDatabase.getInstance(context).openHelper.writableDatabase
+            db.execSQL("VACUUM INTO '${tempDb.absolutePath.replace("'", "''")}'")
+            tempDb.exists() && tempDb.length() > 0
+        }.getOrDefault(false)
+
+        if (!vacuumSuccess) {
+            DietDatabase.getInstance(context).openHelper.writableDatabase.query("PRAGMA wal_checkpoint(TRUNCATE)").use { it.moveToFirst() }
+        }
+
         var images = 0
         val output = context.contentResolver.openOutputStream(target, "wt") ?: throw IOException("Nie można zapisać pliku")
-        output.use { raw ->
-            ZipOutputStream(raw.buffered()).use { zip ->
-                zip.putNextEntry(ZipEntry(MANIFEST))
-                zip.write("Moja Dieta backup\nformat=1\ncreated=${System.currentTimeMillis()}\n".toByteArray())
-                zip.closeEntry()
-                listOf(dbFile, File(dbFile.path + "-wal"), File(dbFile.path + "-shm")).filter { it.exists() }.forEach {
-                    zip.addFile("databases/${it.name}", it)
-                }
-                imagesDir.listFiles()?.filter { it.isFile }?.forEach {
-                    zip.addFile("images/${it.name}", it)
-                    images++
-                }
-                prefsDir.listFiles()?.filter { it.name in prefsToBackup }?.forEach {
-                    zip.addFile("shared_prefs/${it.name}", it)
+        try {
+            output.use { raw ->
+                ZipOutputStream(raw.buffered()).use { zip ->
+                    zip.putNextEntry(ZipEntry(MANIFEST))
+                    zip.write("Moja Dieta backup\nformat=1\ncreated=${System.currentTimeMillis()}\n".toByteArray())
+                    zip.closeEntry()
+                    if (vacuumSuccess) {
+                        zip.addFile("databases/${DietDatabase.NAME}", tempDb)
+                    } else {
+                        listOf(dbFile, File(dbFile.path + "-wal"), File(dbFile.path + "-shm")).filter { it.exists() }.forEach {
+                            zip.addFile("databases/${it.name}", it)
+                        }
+                    }
+                    imagesDir.listFiles()?.filter { it.isFile }?.forEach {
+                        zip.addFile("images/${it.name}", it)
+                        images++
+                    }
+                    prefsDir.listFiles()?.filter { it.name in prefsToBackup }?.forEach {
+                        zip.addFile("shared_prefs/${it.name}", it)
+                    }
                 }
             }
+        } finally {
+            if (tempDb.exists()) tempDb.delete()
         }
         val size = context.contentResolver.openFileDescriptor(target, "r")?.use { it.statSize / 1024 } ?: 0
         Summary(images, size)

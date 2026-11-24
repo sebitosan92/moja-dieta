@@ -23,9 +23,11 @@ import kotlin.math.roundToInt
 class MealVisionRecognizer {
 
     private val candidateModels = listOf(
-        "gemini-2.5-flash",
-        "gemini-2.0-flash",
-        "gemini-1.5-flash"
+        "gemini-3.5-flash-lite",
+        "gemini-3.8-flash",
+        "gemini-3.7-flash",
+        "gemini-3.5-flash",
+        "gemini-flash-latest"
     )
 
     suspend fun recognizeMeal(imageFile: File, apiKey: String): RecognizedMeal = withContext(Dispatchers.IO) {
@@ -40,15 +42,24 @@ class MealVisionRecognizer {
         val base64Image = prepareBase64Image(imageFile)
 
         var lastException: Exception? = null
-        for (model in candidateModels) {
-            try {
-                return@withContext callGeminiApi(model, base64Image, cleanKey)
-            } catch (e: ModelNotFoundException) {
-                lastException = e
-                continue
-            } catch (e: Exception) {
-                throw e
+        for (attempt in 1..2) {
+            for (model in candidateModels) {
+                try {
+                    return@withContext callGeminiApi(model, base64Image, cleanKey)
+                } catch (e: ModelNotFoundException) {
+                    lastException = e
+                    continue
+                } catch (e: IOException) {
+                    lastException = e
+                    if (e.message?.contains("przeciążone", ignoreCase = true) == true) {
+                        continue // próbuj kolejny model z listy przy 503
+                    }
+                    throw e
+                } catch (e: Exception) {
+                    throw e
+                }
             }
+            if (attempt == 1) kotlinx.coroutines.delay(1000)
         }
         throw lastException ?: IOException("Nie udało się połączyć z usługą Gemini.")
     }
@@ -156,6 +167,9 @@ class MealVisionRecognizer {
             }
             code == 429 -> {
                 throw IOException("Przekroczono limit zapytań Gemini API. Spróbuj za chwilę.")
+            }
+            code == 503 -> {
+                throw IOException("Serwery Google Gemini są chwilowo przeciążone. Spróbuj ponownie za moment.")
             }
             !errorMsg.isNullOrBlank() -> {
                 throw IOException("Błąd Gemini API ($code): $errorMsg")
